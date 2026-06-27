@@ -2015,7 +2015,7 @@ def train_on_moons_dataset(
 
 # %%
 def visualize_vector_field(
-    field: IsotropicSirenFunc,
+    field: Func,
     t: float,
     ax: plt.Axes,
     args=None,
@@ -2260,15 +2260,14 @@ class NNRGIsingConfig:
 
 def main():
     parser = argparse.ArgumentParser(description='Train NNRG model.')
-    parser.add_argument('--batch_size', type=int, default=500, help='Batch size')
+    parser.add_argument('--batch_size', type=int, help='Batch size')
     parser.add_argument('--lr_min', type=float, default=0.001, help='min learning rate')
-    parser.add_argument('--depth', type=int, default=2, help='Depth of WrapperForNNRG')
     parser.add_argument('--ke_penalty_coeff_min', type=float, default=1.0, help='min possible value for KE penalty coefficient')
     parser.add_argument('--coeff_marginal_regularization_min', type=float, default=6.0, help='min Coefficient for marginal regularization')
     parser.add_argument('--coeff_main_loss_term_min', type=float, default=1.0, help='min Coefficient for main loss term')
     parser.add_argument('--num_time_samples', type=int, default=40, help='Number of time samples')
     parser.add_argument('--seed', type=int, default=5678, help='Random seed')
-    parser.add_argument('--steps', type=int, default=10000)
+    parser.add_argument('--steps', type=int, default=20000)
     parser.add_argument('--lattice_size', type=int)
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
 
@@ -2306,7 +2305,7 @@ def main():
     dataloader = DataLoader(full_dataset, NNRGIsingConfig.BATCH_SIZE, loader_key)
 
     # Generate test dataset
-    test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NNRGIsingConfig.BATCH_SIZE, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+    test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
     test_dataset = (test_dataset - dataset_mean) / dataset_std
     #=========================
 

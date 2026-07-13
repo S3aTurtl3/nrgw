@@ -5,7 +5,7 @@ import jax.random as jr
 # Ensure all your classes and functions (WrapperForNNRG, train_nnrg, etc.) are imported or defined above this in the real script.
 
 
-
+import sys
 
 
 from ax.api.client import Client
@@ -54,7 +54,7 @@ from numpyro.diagnostics import gelman_rubin, autocorrelation, effective_sample_
 
 #here = pathlib.Path(os.getcwd())
 OUTPUT_DIR = "/n/holyscratch01"
-MODEL_DIR = os.path.join(OUTPUT_DIR, "/models")
+siren_model_dir = os.path.join(OUTPUT_DIR, "/models")
 
 
 ## NN Architecture
@@ -191,8 +191,256 @@ class ConcatSquash(eqx.Module):
 ## Misc
 
 
+# %%
+"""
+Overfitting detection via patience-based early stopping for JAX training loops.
+
+Usage:
+    tracker = OverfitTracker(patience=10, min_delta=1e-4)
+
+    for epoch in range(num_epochs):
+        val_loss = eval_step(params, val_batch)
+
+        status = tracker.update(val_loss)
+        print(tracker.summary())
+
+        if status == "stop":
+            print("Early stopping triggered.")
+            break
+"""
+
+import math
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 
+# ---------------------------------------------------------------------------
+# Data container
+# ---------------------------------------------------------------------------
+
+@dataclass
+class EpochRecord:
+    epoch: int
+    val_loss: float
+    is_best: bool
+
+
+# ---------------------------------------------------------------------------
+# Core tracker
+# ---------------------------------------------------------------------------
+
+"""
+Overfitting detection via patience-based early stopping for JAX training loops.
+
+Usage:
+    tracker = OverfitTracker(patience=10, min_delta=1e-4)
+
+    for epoch in range(num_epochs):
+        val_loss = eval_step(params, val_batch)
+
+        status = tracker.update(val_loss)
+        print(tracker.summary())
+
+        if status == "stop":
+            print("Early stopping triggered.")
+            break
+"""
+
+import math
+from dataclasses import dataclass
+from typing import Literal, Optional
+
+
+# ---------------------------------------------------------------------------
+# Data container
+# ---------------------------------------------------------------------------
+
+@dataclass
+class EpochRecord:
+    epoch: int
+    val_loss: float
+    is_best: bool
+
+
+# ---------------------------------------------------------------------------
+# Core tracker
+# ---------------------------------------------------------------------------
+
+class OverfitTracker:
+    """
+    Patience-based early-stopping tracker for JAX training loops.
+
+    Each call to `update` records the validation loss for that epoch and
+    returns a status string indicating whether to keep training or stop.
+
+    The concept of patience comes from Prechelt (1998), who introduced
+    early stopping as a regularisation technique: training is halted when
+    the validation error has not improved for a given number of consecutive
+    epochs ("patience"), preventing the model from continuing to overfit.
+
+    Parameters
+    ----------
+    patience : int
+        Number of consecutive epochs without a val-loss improvement
+        (by at least `min_delta`) before recommending an early stop.
+        Prechelt's original formulation used a strip-based criterion;
+        the patience variant used here follows the now-standard practice
+        described in Goodfellow et al. (2016), Deep Learning, Ch. 7.
+    min_delta : float
+        Minimum decrease in val loss to qualify as an improvement.
+        Prevents near-flat plateaus from resetting the counter
+        indefinitely.
+    """
+
+    def __init__(
+        self,
+        patience: int = 10,
+        min_delta: float = 1e-4,
+    ) -> None:
+        if patience < 1:
+            raise ValueError("patience must be >= 1")
+        if min_delta < 0:
+            raise ValueError("min_delta must be >= 0")
+
+        self.patience = patience
+        self.min_delta = min_delta
+
+        self._history: list[EpochRecord] = []
+        self._best_val: float = math.inf
+        self._epochs_no_improve: int = 0
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def update(self, val_loss: float) -> Literal["ok", "stop"]:
+        """
+        Record the validation loss for the current epoch.
+
+        Returns
+        -------
+        "ok"   – patience not yet exhausted; continue training.
+        "stop" – no improvement for `patience` epochs; recommend stopping.
+
+        Parameters
+        ----------
+        val_loss : float
+            Mean validation loss for this epoch. Accepts JAX arrays
+            transparently via implicit float() conversion.
+        """
+        val_loss = float(val_loss)
+        epoch = len(self._history)
+
+        improved = val_loss < self._best_val - self.min_delta
+        if improved:
+            self._best_val = val_loss
+            self._epochs_no_improve = 0
+        else:
+            self._epochs_no_improve += 1
+
+        self._history.append(
+            EpochRecord(epoch=epoch, val_loss=val_loss, is_best=improved)
+        )
+
+        if self._epochs_no_improve >= self.patience:
+            return "stop"
+        return "ok"
+
+    def is_overfitting(self) -> bool:
+        """True once patience has been exhausted."""
+        return self._epochs_no_improve >= self.patience
+
+    def summary(self) -> str:
+        """Human-readable one-liner for the current epoch."""
+        if not self._history:
+            return "No data recorded yet."
+        r = self._history[-1]
+        return (
+            f"Epoch {r.epoch:>4d} | "
+            f"val={r.val_loss:.6f}  "
+            f"best={self._best_val:.6f}  "
+            f"no-improve={self._epochs_no_improve}/{self.patience}"
+        )
+
+    def report(self) -> dict:
+        """
+        Structured diagnostic dictionary for the current epoch.
+
+        Suitable for logging to experiment trackers (W&B, MLflow, etc.)
+        or for programmatic use in hyperparameter search loops.
+        """
+        if not self._history:
+            return {}
+        r = self._history[-1]
+        return {
+            "epoch":              r.epoch,
+            "val_loss":           r.val_loss,
+            "best_val_loss":      self._best_val,
+            "epochs_no_improve":  self._epochs_no_improve,
+            "patience":           self.patience,
+            "recommend_stop":     self.is_overfitting(),
+        }
+
+    def reset(self) -> None:
+        """Clear all history and reset internal state."""
+        self._history.clear()
+        self._best_val = math.inf
+        self._epochs_no_improve = 0
+
+    @property
+    def best_val_loss(self) -> float:
+        """Best validation loss seen so far."""
+        return self._best_val
+
+    @property
+    def history(self) -> list[EpochRecord]:
+        """Read-only list of all recorded epoch records."""
+        return list(self._history)
+
+
+# ---------------------------------------------------------------------------
+# Convenience function for post-hoc analysis
+# ---------------------------------------------------------------------------
+
+def check_overfit(
+    val_losses: list[float],
+    patience: int = 10,
+    min_delta: float = 1e-4,
+) -> dict:
+    """
+    Analyse a completed (or partial) training run from a val-loss list.
+
+    Parameters
+    ----------
+    val_losses : list[float]
+        Per-epoch validation losses.
+    patience, min_delta :
+        Forwarded to :class:`OverfitTracker`.
+
+    Returns
+    -------
+    dict with keys: ``epochs``, ``final_report``, ``first_stop_epoch``,
+    ``best_val_loss``, ``records``.
+    """
+    tracker = OverfitTracker(patience=patience, min_delta=min_delta)
+    first_stop_epoch: Optional[int] = None
+
+    for i, vl in enumerate(val_losses):
+        status = tracker.update(vl)
+        if status == "stop" and first_stop_epoch is None:
+            first_stop_epoch = i
+
+    return {
+        "epochs":           len(val_losses),
+        "final_report":     tracker.report(),
+        "first_stop_epoch": first_stop_epoch,
+        "best_val_loss":    tracker.best_val_loss,
+        "records":          tracker.history,
+    }
+
+
+
+# %%
 ## Module responsible for the differential equation solve
 
 
@@ -562,6 +810,7 @@ class NNRGSubModule(eqx.Module):
         delta_log_likelihood += local_delta_log_likelihood2.sum()
         return z, intra_latents, variables_other_half, delta_log_likelihood
 
+
     def inference(self, z: jax.Array):
         """
             Returns a tuple containing:
@@ -636,8 +885,6 @@ class NNRGSubModule(eqx.Module):
       return {COARSE_VAR_NAME: coarse_variables,
                 LATENT_VAR_NAME: latent_variables, DECIMATOR_INPUT_NAME: decimator_input, LOGP_NAME: delta_log_likelihood, DISENTANGLER_INPUT_NAME: disentangler_input,
               VECTOR_FIELD_SNAPSHOT_NAME: {DISENTANGLER_CNF_NAME: vector_field_snapshots_disen, DECIMATOR_CNF_NAME: vector_field_snapshots_deci} }
-
-
     def _create_default_CNF(self, key: jr.PRNGKey):
         return CNF(vector_field_parameterization= self._create_default_vector_field(key),
         data_size=2,
@@ -755,7 +1002,6 @@ class NNRG(eqx.Module):
       all_vector_field_snapshots_decimator = jnp.stack(per_submodule_vector_field_snapshots_decimator)
 
       return {COARSE_VAR_NAME: all_coarse_variables, LOGP_NAME: total_delta_log_likelihood, VECTOR_FIELD_SNAPSHOT_NAME: {DECIMATOR_CNF_NAME: all_vector_field_snapshots_decimator, DISENTANGLER_CNF_NAME: all_vector_field_snapshots_disentangler}}
-
 
 
 
@@ -1262,6 +1508,7 @@ def sample_from_continuous_relaxation_1D(key, dataset_size, lattice_size, temp, 
     dataset_continuous = jax.vmap(sample_continuous_from_discrete, (0, 0, None, None, None))(keys_continuous, dataset_discrete, K, alpha, lattice_size)
     return dataset_continuous
 
+
 ### High temp ising
 
 
@@ -1381,6 +1628,58 @@ BASELINE_LEARNING_RATE = 1e-3
 
 # %% [markdown]
 # ### helper functions misc
+
+
+# %%
+def kinetic_energy_penalty(model, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, regularization_term_key: jr.PRNGKey):
+    """
+    Computes a monte carlo estimate of the kinetic-energy penalty:
+    Sum over submodules of ∫ 0.5( v(x, t) )^2 dt
+    """
+
+
+    def compute_penalty_single_layer_in_submodule(velocity, key):
+
+        # Evaluate velocity field for this submodule
+        integrand = 0.5 * jnp.square(jnp.linalg.norm(velocity, axis=1))
+
+        # Compute integral estimate
+        mean_integrand = jnp.mean(integrand)
+        return mean_integrand
+
+    def compute_single_submodule_penalty(deci_point_options, disen_point_options, key):
+        # Sample time within the specific submodule's interval
+        key_dis, key_dec, key_dis_choice, key_deci_choice = jr.split(key, 4)
+
+        penalty_for_disentangler_layer = compute_penalty_single_layer_in_submodule(disen_point_options, key_dis)
+        penalty_for_decimator_layer = compute_penalty_single_layer_in_submodule(deci_point_options, key_dec)
+        return penalty_for_disentangler_layer + penalty_for_decimator_layer
+
+    # Split the key to ensure unique sampling for each submodule
+    num_submodules = len(model.nnrg.submodules)
+    keys = jr.split(regularization_term_key, num_submodules)
+
+    # FIX: Use a list comprehension to iterate over the Python list of submodules
+    # This works perfectly inside jax.jit as it unrolls the loop at compile time.
+    penalties = jax.vmap(compute_single_submodule_penalty)(per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, keys)
+
+    return jnp.sum(jnp.array(penalties))
+
+def penalties_on_test_data(model, test_data, loss_key, num_time_samples):
+  loss_key, key_ke, key_shots = jr.split(loss_key, 3)
+  key_shots = jr.split(key_shots, test_data.shape[0])
+
+  all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, test_data, key_shots)
+
+  keys_ke = jr.split(key_ke, all_coarse.shape[0])
+
+  penalty = jax.vmap(lambda deci_shots, disen_shots, key: jax.checkpoint(kinetic_energy_penalty)(model, deci_shots, disen_shots, key))(per_submodule_decimator_vector_field_snapshots,
+                                                                                                                                                            per_submodule_disentangler_vf_snapshots, keys_ke)
+  penalty = jnp.mean(penalty)
+  return {"ke": penalty, "nll": NLLLoss_2(all_coarse, logpp)}
+
+
+
 
 # %%
 def undo_custom_continuous_relaxation(configuration):
@@ -1629,8 +1928,80 @@ jax_array = jax.random.uniform(key, (4, 10))
 plot_jax_rows_as_images(jax_array)
 """
 
+# %% [code]
+def compute_variance_of_magnetization(key, nrg_model, batch_size):
+  key_discrete, key = jr.split(key)
+  visualization_key = jr.split(key, 10)
+  samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(nrg_model, key, LATTICESIZE))(visualization_key)
+  discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(samples_from_model, jr.split(key_discrete, batch_size))
+  variance = jnp.sum(jax.vmap(magnetization)(discrete_samples)**2)/discrete_samples.shape[0]
+  return variance
 
 
+# %% [code]
+"""
+Visualize a batch of 1D Ising spin configurations arranged in a grid.
+
+Input:
+    spins: jax.numpy array of shape (batch, N), entries in {-1, +1}
+           (batch = number of spin configurations, N = chain length)
+
+Each configuration is drawn as a 1D strip (black = -1, white = +1),
+and the strips are tiled into a grid, one per batch element.
+"""
+
+import math
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+
+
+def visualize_spin_batch(spins, ncols=None, cell_size=1.2, cmap="Greys"):
+    """
+    Arrange each batch element's 1D spin configuration into a grid of subplots.
+
+    Args:
+        spins: (batch, N) array-like of +-1 spins (jax or numpy array).
+        ncols: number of grid columns. Defaults to ceil(sqrt(batch)).
+        cell_size: size (inches) of each subplot cell.
+        cmap: matplotlib colormap used to render the spin strip.
+
+    Returns:
+        (fig, axes) the matplotlib figure and axes array.
+    """
+    spins = jnp.asarray(spins)
+    if spins.ndim != 2:
+        raise ValueError(f"expected a 2D array (batch, N), got shape {spins.shape}")
+
+    batch, n = spins.shape
+
+    if ncols is None:
+        ncols = math.ceil(math.sqrt(batch))
+    nrows = math.ceil(batch / ncols)
+
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(ncols * cell_size, nrows * cell_size * 0.4),
+        squeeze=False,
+    )
+
+    # Convert once to a plain numpy-like structure for plotting
+    spins_np = jnp.asarray(spins)
+
+    for idx in range(nrows * ncols):
+        r, c = divmod(idx, ncols)
+        ax = axes[r][c]
+        if idx < batch:
+            config = spins_np[idx].reshape(1, n)  # reshape to a 1-row strip
+            ax.imshow(config, cmap=cmap, vmin=-1, vmax=1, aspect="auto")
+            ax.set_title(f"#{idx}", fontsize=8)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    fig.tight_layout()
+    return fig, axes
+
+
+#
 # %% [markdown]
 # ### helper functions for training
 
@@ -1646,20 +2017,23 @@ SYMMETRY_REGULARIZATION_COEFF = 1
 class KESchedule:
   ALPHA: int
 
-  def __init__(self, initial_val, total_number_training_steps):
+
+  def __init__(self, initial_val, num_steps_till_zero):
     self.coeff = initial_val
     self.ALPHA = 1
-    self.total_steps = total_number_training_steps
+    self.num_steps_till_0 = num_steps_till_zero
 
   def get_next(self, step):
-    return self.coeff * (1-step/self.total_steps)
+    return jnp.max(jnp.array([self.coeff * (1-(step)/(self.num_steps_till_0)), 0])) # try enough to change number of epochs to maximum half of patience, and minimum 3 epochs
+
 
 
 
 # %%
 def choose_relevant_sample_to_use_in_KE_penalty(configuration):
   return configuration[:2] # this seems really bad
-# WATCH OUT COPYING INTO HERE
+
+PATIENCE_NUM_EPOCHS = 75
 def train_nnrg(model: WrapperForNNRGSubModule,
                dataloader: StreamingDataLoader,
                loss_key,
@@ -1668,57 +2042,29 @@ def train_nnrg(model: WrapperForNNRGSubModule,
                coeff_marginal_regularization: float,
                coeff_main_loss_term: float,
                num_time_samples,
+               dataset_test,
+               num_time_samples_test,
+               ke_schedule: KESchedule,
                steps=10000,
                exact_logp=True,
                weight_decay=1e-5,
                print_every=100,
+               check_for_overfit_every=100,
                desc="",
                 save_every=1500):
   optim = optax.adamw(lr, weight_decay=weight_decay)
   opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
 
-  ke_schedule = KESchedule(ke_penalty_coeff, steps)
 
-  fname = f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_test" + ".eqx"
+  tracker = OverfitTracker(patience=PATIENCE_NUM_EPOCHS*dataloader.array.shape[0]/dataloader.batch_size/check_for_overfit_every, min_delta=0.01)
+
+  fname = f"m{lr}{steps}{ke_schedule.coeff}{desc}_test" + ".eqx"
   opt_state_fname = f"m{lr}{steps}_test.eqx"
-  pth = MODEL_DIR + fname
-  pth_opt_state = MODEL_DIR + opt_state_fname
+  pth = siren_model_dir + fname
+  pth_opt_state = siren_model_dir + opt_state_fname
 
 
   NUM_TIME_SAMPLES = 40
-  def kinetic_energy_penalty(per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, regularization_term_key: jr.PRNGKey):
-    """
-    Computes a monte carlo estimate of the kinetic-energy penalty:
-    Sum over submodules of ∫ 0.5( v(x, t) )^2 dt
-    """
-
-
-    def compute_penalty_single_layer_in_submodule(velocity, key):
-
-        # Evaluate velocity field for this submodule
-        integrand = 0.5 * jnp.square(jnp.linalg.norm(velocity, axis=1))
-
-        # Compute integral estimate
-        mean_integrand = jnp.mean(integrand)
-        return mean_integrand
-
-    def compute_single_submodule_penalty(deci_point_options, disen_point_options, key):
-        # Sample time within the specific submodule's interval
-        key_dis, key_dec, key_dis_choice, key_deci_choice = jr.split(key, 4)
-
-        penalty_for_disentangler_layer = compute_penalty_single_layer_in_submodule(disen_point_options, key_dis)
-        penalty_for_decimator_layer = compute_penalty_single_layer_in_submodule(deci_point_options, key_dec)
-        return penalty_for_disentangler_layer + penalty_for_decimator_layer
-
-    # Split the key to ensure unique sampling for each submodule
-    num_submodules = len(model.nnrg.submodules)
-    keys = jr.split(regularization_term_key, num_submodules)
-
-    # FIX: Use a list comprehension to iterate over the Python list of submodules
-    # This works perfectly inside jax.jit as it unrolls the loop at compile time.
-    penalties = jax.vmap(compute_single_submodule_penalty)(per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, keys)
-
-    return jnp.sum(jnp.array(penalties))
 
   @eqx.filter_value_and_grad(has_aux=True)
   def loss(model, data, loss_key):
@@ -1729,7 +2075,7 @@ def train_nnrg(model: WrapperForNNRGSubModule,
 
     keys_ke = jr.split(key_ke, all_coarse.shape[0])
 
-    penalty = jax.vmap(lambda deci_shots, disen_shots, key: jax.checkpoint(kinetic_energy_penalty)(deci_shots, disen_shots, key))(per_submodule_decimator_vector_field_snapshots,
+    penalty = jax.vmap(lambda deci_shots, disen_shots, key: jax.checkpoint(kinetic_energy_penalty)(model, deci_shots, disen_shots, key))(per_submodule_decimator_vector_field_snapshots,
                                                                                                                                                               per_submodule_disentangler_vf_snapshots, keys_ke)
     penalty = jnp.mean(penalty)
 
@@ -1737,6 +2083,15 @@ def train_nnrg(model: WrapperForNNRGSubModule,
     main_loss = NLLLoss_2(all_coarse, logpp)
     total_loss = coeff_main_loss_term*main_loss + coeff_marginal_regularization*marginal_regularization_penalty + ke_schedule.get_next(step)*penalty # optimization improvement: lamdba within jit
     return total_loss, (penalty, marginal_regularization_penalty, main_loss)
+
+  @eqx.filter_jit
+  def validation_loss(model, loss_key):
+    key_shots_val, key_val = jr.split(loss_key, 2)
+    key_shots_val = jr.split(key_shots_val, dataset_test.shape[0])
+    all_coarse_val, logpp_val = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples_test, key), in_axes=(None, 0, 0))(model, dataset_test, key_shots_val)[:2]
+    val_loss = NLLLoss_2(all_coarse_val, logpp_val)
+    return val_loss
+
 
   @eqx.filter_jit
   def make_step(model: WrapperForNNRGSubModule, opt_state, data, loss_key):
@@ -1754,7 +2109,10 @@ def train_nnrg(model: WrapperForNNRGSubModule,
   best_loss = float('inf')
   loss_msgs = []
   ke_penalty_of_best_model = float('inf')
+  loss_key, key_val = jr.split(loss_key, 2)
+  overfitting = False
   while step < steps:
+      val_loss = None
       start = time.time()
 
       data = dataloader(step)
@@ -1764,20 +2122,28 @@ def train_nnrg(model: WrapperForNNRGSubModule,
       )
 
       end = time.time()
+      if (step % check_for_overfit_every == 0) or steps == steps-1:
+        val_loss = validation_loss(model, key_val)
+        key_val = jr.fold_in(key_val, step)
+        tracker_verdict = tracker.update(val_loss)
+        if tracker_verdict == "stop":
+          overfitting = True
+          print(f"Overfitting! val loss: {val_loss}")
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_model = model
+            ke_penalty_of_best_model = ke_penalty
       if (step % print_every) == 0 or step == steps - 1:
-          if value < best_loss:
-              best_loss = value
-              best_model = model
-              ke_penalty_of_best_model = ke_penalty
-          loss_msg = f"Step: {step}, Loss: {value}, KE Penalty: {ke_penalty}, Marg Penalty: {penalty_marginal_distribution}, just NLL: {main_loss}, Computation time: {end - start}"
+          loss_msg = f"Step: {step}, Loss: {value}, KE Penalty: {ke_penalty}, Marg Penalty: {penalty_marginal_distribution}, just NLL: {main_loss}, Val loss: {val_loss}, Computation time: {end - start}"
           print(loss_msg)
           loss_msgs.append(loss_msg)
       if (step % save_every) == 0 or step == steps - 1 or step == steps or step == 1:
-
-        eqx.tree_serialise_leaves(pth_opt_state, {"step": step, "opt": opt_state})
         nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
+      if overfitting and ke_schedule.get_next(step) == 0:
+        break
 
   return best_model, (opt_state, loss_msgs, ke_penalty_of_best_model)
+
 
 # %%
 def train_nnrg_ising(model: WrapperForNNRGSubModule,
@@ -2182,7 +2548,7 @@ def create_visualizations(inference_info, out_path, dataset, width, height, samp
 
 
 # %%
-def evaluate_sample_quality(inference_info, dataset, sample_key, bandwidth: float =0.6):
+def evaluate_sample_quality_nnrg(inference_info, dataset, sample_key, lattice_size, bandwidth: float =0.6):
     """Compute the MMD distance between the distribution learned by the model and the target distribution using Gaussian RBF kernel
     of bandwidth `bandwidth`
 
@@ -2193,7 +2559,7 @@ def evaluate_sample_quality(inference_info, dataset, sample_key, bandwidth: floa
     std = inference_info.std
     num_samples = dataset.shape[0]
     sample_key = jr.split(sample_key, num_samples)
-    samples = jax.vmap(model.sample)(key=sample_key)
+    samples = jax.vmap(lambda key: sample_from_full_nnrg(model, key, lattice_size))(sample_key)
     samples = samples * std + mean
     x = torch.tensor(np.array(samples), dtype=torch.float32)
     y = torch.tensor(np.array(dataset), dtype=torch.float32)
@@ -2216,7 +2582,6 @@ def evaluate_sample_quality(inference_info, dataset, sample_key, bandwidth: floa
     mmd_value = mmd_metric.compute()
 
     return float(mmd_value)
-
 
 # %%
 def evaluation_metrics(inference_info, test_dataset, key):
@@ -2266,6 +2631,7 @@ def main():
     parser.add_argument('--coeff_marginal_regularization_min', type=float, default=6.0, help='min Coefficient for marginal regularization')
     parser.add_argument('--coeff_main_loss_term_min', type=float, default=1.0, help='min Coefficient for main loss term')
     parser.add_argument('--num_time_samples', type=int, default=40, help='Number of time samples')
+    parser.add_argument('--num_time_samples_evaluation', type=int, default=40, help='Number of time samples')
     parser.add_argument('--seed', type=int, default=5678, help='Random seed')
     parser.add_argument('--steps', type=int, default=20000)
     parser.add_argument('--lattice_size', type=int)
@@ -2275,7 +2641,7 @@ def main():
 
     # Setup keys
     key = jr.PRNGKey(args.seed)
-    model_key, loader_key, loss_key, sample_key, test_key, evaluation_key = jr.split(key, 6)
+    model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 7)
 
     OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
     OUTPUT_FILE_PTH = os.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
@@ -2285,7 +2651,7 @@ def main():
     OLD_BATCH_SIZE = 500
 
 
-    INTEGRATED_TIME = get_help_finding_int_time(args.temp, args.lattice_size, 1.0, 1.0, n=100)
+    INTEGRATED_TIME = max(get_help_finding_int_time(args.temp, args.lattice_size, 1.0, 1.0, n=100), args.lattice_size)
     COEFF_FOR_BURN_IN=2
     BURN_IN = COEFF_FOR_BURN_IN*INTEGRATED_TIME
 
@@ -2293,7 +2659,9 @@ def main():
     # Generate a dataset of size 19000
     NUM_TRAIN_SAMPLES = 19000
     NUM_SAMPLES_TEST = 2500
+    NUM_SAMPLES_VALIDATION = 500
     NUM_CHAINS = 100
+    assert NUM_TRAIN_SAMPLES % NUM_CHAINS == 0 and NUM_SAMPLES_VALIDATION % NUM_CHAINS == 0 and NUM_SAMPLES_TEST % NUM_CHAINS == 0
     dataset_key, test_key_new, loader_key = jr.split(loader_key, 3)
 
     full_dataset = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
@@ -2307,6 +2675,9 @@ def main():
     # Generate test dataset
     test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
     test_dataset = (test_dataset - dataset_mean) / dataset_std
+
+    validation_dataset = sample_from_continuous_relaxation_1D(key_validation, NUM_SAMPLES_VALIDATION, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS )
+    validation_dataset = (validation_dataset - dataset_mean) / dataset_std
     #=========================
 
 
@@ -2362,6 +2733,7 @@ def main():
 
 
     for _ in range(20):
+        evaluation_key, key_nll, key_sample_quality, key_ot_penalty = jr.split(evaluation_key, 4)
         trials = client.get_next_trials(max_trials=1)
         per_trial_loss_msgs = []
         for trial_index, parameters in trials.items():
@@ -2371,7 +2743,7 @@ def main():
 
 
     
-            nrg_model, (_, loss_msgs, ke_penalty) = train_nnrg(
+            nrg_model, (_, loss_msgs, _) = train_nnrg(
                 nrg_model,
                 dataloader,
                 loss_key,
@@ -2380,24 +2752,31 @@ def main():
                 coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
                 coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
                 num_time_samples=args.num_time_samples,
-                desc=str(parameters) + str(args)
+                dataset_test = validation_dataset,
+                num_time_samples_test= args.num_time_samples_evaluation,
+                desc=str(tuple(parameters.items())) + str(args),
+                steps=args.steps
             )
             per_trial_loss_msgs.append(loss_msgs)
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)
-            sample_quality = evaluate_sample_quality(inference_info, test_dataset, sample_key)
-            nll_loss = nll(inference_info, test_dataset, sample_key)
-            raw_data = {NLL_METRIC_NAME: nll_loss, MMD_METRIC_NAME: sample_quality, KE_PENALTY_NAME: ke_penalty}
+            sample_quality = evaluate_sample_quality_nnrg(inference_info, test_dataset, key_sample_quality, args.lattice_size)
+            penalties = penalties_on_test_data(nrg_model, test_dataset, key_ot_penalty, args.num_time_samples_evaluation)
+            raw_data = {NLL_METRIC_NAME: penalties["nll"], MMD_METRIC_NAME: sample_quality, KE_PENALTY_NAME: penalties["ke"]}
 
             client.complete_trial(trial_index=trial_index, raw_data=raw_data)
 
     best_parameters, prediction, index, name = client.get_best_parameterization()
     
+
+
     with open(OUTPUT_FILE_PTH, "w") as file:
         json.dump({"best_params": best_parameters, "prediction": prediction, "index": index, "name": name, "loss_msgs": per_trial_loss_msgs}, file)
 
+
+
 if __name__ == '__main__':
     # To run in Colab without crashing on sys.argv:
-    import sys
+    
     if 'ipykernel' in sys.modules:
         sys.argv = ['']
     main()

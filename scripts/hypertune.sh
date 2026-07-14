@@ -2,7 +2,6 @@
 #SBATCH --account=iaifi_lab
 #SBATCH -J ice # Job name
 #SBATCH -p iaifi_gpu # Partition(s) (separate with
-#SBATCH --gres=gpu:1
 # commas if using multiple)
 #SBATCH --ntasks=4 # Number of cores
 #SBATCH -t 0-01:00:00 # Time (D-HH:MM:SS)

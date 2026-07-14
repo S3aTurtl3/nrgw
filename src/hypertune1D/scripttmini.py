@@ -2204,7 +2204,7 @@ def get_model_file_identifier(lr: float,
                steps=10000,
                check_for_overfit_every=100,
                desc=""):
-  return f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test"
+  return str(hash(f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test"))
 
 
 

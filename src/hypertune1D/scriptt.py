@@ -2822,7 +2822,7 @@ def main():
 
 
     # Configure and experiment with the desired parameters
-    STEPS_IN_EPOCH = dataloader.array.shape[0]/dataloader.batch_size
+    STEPS_IN_EPOCH = int(jnp.ceil(dataloader.array.shape[0]/dataloader.batch_size))
     client.configure_experiment(parameters=[
         RangeParameterConfig(
             name="penaltyCoeff",
@@ -2843,7 +2843,7 @@ def main():
         ),
         RangeParameterConfig(
         name=PARAM_NAME_STEPS_TIL_0,
-        bounds=(3*STEPS_IN_EPOCH, PATIENCE_NUM_EPOCHS*STEPS_IN_EPOCH/3), # from 3 epochs to half
+        bounds=(3*STEPS_IN_EPOCH, int(jnp.ceil(PATIENCE_NUM_EPOCHS*STEPS_IN_EPOCH/3))), # from 3 epochs to half
         parameter_type="int",
     ),
         

@@ -1958,6 +1958,28 @@ plot_jax_rows_as_images(jax_array)
 ### helper functions for visualization
 
 # %% [code]
+@jax.jit
+def sample_s_given_x(rng_key, x):
+    """Samples discrete Ising variables s in {-1, 1}^N given continuous vector x.
+
+    Args:
+        rng_key: JAX random PRNGKey.
+        x: jnp.ndarray of shape (N,) representing the continuous states.
+
+    Returns:
+        jnp.ndarray of shape (N,) with values in {-1.0, 1.0}.
+    """
+    # Calculate the probability that s_i = +1, which is equivalent to 1 / (1 + e^(-2*x))
+    p_positive = jax.nn.sigmoid(2.0 * x)
+
+    # Generate uniform random values between 0 and 1
+    u = jax.random.uniform(rng_key, shape=x.shape)
+
+    # Assign 1.0 if u < p_positive, otherwise assign -1.0
+    s = jnp.where(u < p_positive, 1.0, -1.0)
+
+    return s
+
 def get_discrete_samples_from_model(model, key, lattice_size, num_samples):
   key_continuous, key_discrete = jr.split(key)
   samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(model, key, lattice_size))(jr.split(key_continuous, num_samples))
@@ -1973,13 +1995,6 @@ def get_discrete_samples(continuous_samples, key):
 
 
 # %% [code]
-def compute_variance_of_magnetization(key, nrg_model, batch_size):
-  key_discrete, key = jr.split(key)
-  visualization_key = jr.split(key, 10)
-  samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(nrg_model, key, LATTICESIZE))(visualization_key)
-  discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(samples_from_model, jr.split(key_discrete, batch_size))
-  variance = jnp.sum(jax.vmap(magnetization)(discrete_samples)**2)/discrete_samples.shape[0]
-  return variance
 
 
 # %% [code]
@@ -2472,86 +2487,6 @@ def create_visualizations_nnrg(inference_info: InferenceInfo, sample_from_model:
 # %% [markdown]
 # #### for CNF
 
-# %%
-def train_on_moons_dataset(
-    vector_field: CNFVectorField,
-    dataloader,
-    loss_key,
-    lr=1e-4,
-    steps=10000,
-    exact_logp=True,
-    weight_decay=1e-5,
-    penalty_coefficient=0.2,
-    print_every=100,
-):
-
-    data_size = dataloader(0).shape[1] #--- data_size is 2 (see above)
-
-    model = CNF(
-        vector_field_parameterization=vector_field,
-        data_size=data_size,
-        exact_logp=exact_logp,
-    )
-
-    optim = optax.adamw(lr, weight_decay=weight_decay)
-    opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
-
-    NUM_TIME_SAMPLES = 40
-    def kinetic_energy_penalty(model: CNF, data_point: jax.Array, regularization_term_key: jr.PRNGKey):
-        """computes a monte carlo estimate of the kinetic-energy inspired penalty term: ∫ 0.5( v(x, t) )^2 dt where x = `data_point` and v() is the velocity field of the CNF `model`"""
-        # Evaluate the integrand at randomly sampled times
-        interval_start = model.t0
-        interval_end = model.t1
-        time = jr.uniform(regularization_term_key, (NUM_TIME_SAMPLES,), minval=interval_start, maxval=interval_end)
-
-        velocity = jax.vmap(lambda t, y: model.func(t, y, None), in_axes=(0, None))(time, data_point)
-        integrand = 0.5*jnp.pow(velocity, 2)
-
-        #
-        mean_integrand = jnp.mean(integrand)
-        time_interval_length = interval_end - interval_start
-        return time_interval_length*mean_integrand
-
-    @eqx.filter_value_and_grad
-    def loss(model, data, loss_key):
-        nll_loss_key, regularization_term_key = jr.split(loss_key, 2)
-        nll_loss = NLLLoss_and_regularization(model, data, nll_loss_key, False)
-
-        penalty = jax.vmap(lambda model, data_point: kinetic_energy_penalty(model, data_point, regularization_term_key), in_axes=(None, 0))(model, data)
-        penalty = jnp.mean(penalty)
-
-        return nll_loss + penalty_coefficient*penalty
-
-
-    @eqx.filter_jit
-    def make_step(model, opt_state, data, loss_key):
-        value, grads = loss(model, data, loss_key)
-
-        loss_key = jr.split(loss_key, 1)[0]
-
-
-        updates, opt_state = optim.update(
-            grads, opt_state, eqx.filter(model, eqx.is_inexact_array)
-        )
-        model = eqx.apply_updates(model, updates)
-        return value, model, opt_state, loss_key
-
-    step = 0
-    while step < steps:
-        start = time.time()
-
-        data = dataloader(step)
-        step = step + 1
-        value, model, opt_state, loss_key = make_step(
-            model, opt_state, data, loss_key
-        )
-
-        end = time.time()
-        if (step % print_every) == 0 or step == steps - 1:
-            print(f"Step: {step}, Loss: {value}, Computation time: {end - start}")
-
-
-    return model, opt_state
 
 # %%
 def visualize_vector_field(
@@ -2758,12 +2693,6 @@ def evaluate_sample_quality_nnrg(inference_info, dataset, sample_key, lattice_si
     return float(mmd_value)
 
 # %%
-def evaluation_metrics(inference_info, test_dataset, key):
-    """"""
-    sample_key, loss_key = jr.split(key, 2)
-    sample_quality = evaluate_sample_quality(inference_info, test_dataset, sample_key)
-    loss = nll(inference_info, test_dataset, loss_key)
-    return sample_quality, loss
 
 # %%
 seed = 5678
@@ -2812,7 +2741,7 @@ def main():
     model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
 
     OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
-    OUTPUT_FILE_PTH = os.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
+    OUTPUT_FILE_PTH = os.path.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
     PLACEHOLDER_ISING_MEAN = jnp.zeros(args.lattice_size)
     PLACEHOLDER_ISING_STD = jnp.ones(args.lattice_size)
     # Constants calculation
@@ -2889,7 +2818,7 @@ def main():
                         desc=f"hypersweep{tuple(parameters.items())}",
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation) + ".pdf"
-            fig.savefig(os.join(OUTPUT_DIR, fname))
+            fig.savefig(os.path.join(OUTPUT_DIR, fname))
 
 
 

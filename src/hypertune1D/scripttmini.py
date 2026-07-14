@@ -1958,6 +1958,28 @@ plot_jax_rows_as_images(jax_array)
 ### helper functions for visualization
 
 # %% [code]
+@jax.jit
+def sample_s_given_x(rng_key, x):
+    """Samples discrete Ising variables s in {-1, 1}^N given continuous vector x.
+
+    Args:
+        rng_key: JAX random PRNGKey.
+        x: jnp.ndarray of shape (N,) representing the continuous states.
+
+    Returns:
+        jnp.ndarray of shape (N,) with values in {-1.0, 1.0}.
+    """
+    # Calculate the probability that s_i = +1, which is equivalent to 1 / (1 + e^(-2*x))
+    p_positive = jax.nn.sigmoid(2.0 * x)
+
+    # Generate uniform random values between 0 and 1
+    u = jax.random.uniform(rng_key, shape=x.shape)
+
+    # Assign 1.0 if u < p_positive, otherwise assign -1.0
+    s = jnp.where(u < p_positive, 1.0, -1.0)
+
+    return s
+
 def get_discrete_samples_from_model(model, key, lattice_size, num_samples):
   key_continuous, key_discrete = jr.split(key)
   samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(model, key, lattice_size))(jr.split(key_continuous, num_samples))
@@ -1972,15 +1994,7 @@ def get_discrete_samples(continuous_samples, key):
   return discrete_samples
 
 
-# %% [code]
-def compute_variance_of_magnetization(key, nrg_model, batch_size):
-  key_discrete, key = jr.split(key)
-  visualization_key = jr.split(key, 10)
-  samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(nrg_model, key, LATTICESIZE))(visualization_key)
-  discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(samples_from_model, jr.split(key_discrete, batch_size))
-  variance = jnp.sum(jax.vmap(magnetization)(discrete_samples)**2)/discrete_samples.shape[0]
-  return variance
-
+# %
 
 # %% [code]
 """
@@ -2758,12 +2772,6 @@ def evaluate_sample_quality_nnrg(inference_info, dataset, sample_key, lattice_si
     return float(mmd_value)
 
 # %%
-def evaluation_metrics(inference_info, test_dataset, key):
-    """"""
-    sample_key, loss_key = jr.split(key, 2)
-    sample_quality = evaluate_sample_quality(inference_info, test_dataset, sample_key)
-    loss = nll(inference_info, test_dataset, loss_key)
-    return sample_quality, loss
 
 # %%
 seed = 5678

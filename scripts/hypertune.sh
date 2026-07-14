@@ -21,4 +21,4 @@ module load Miniforge3/26.1.0-fasrc01
 
 cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 
-python src/hypertune1D/scripttmini.py
+pixi run python src/hypertune1D/scripttmini.py

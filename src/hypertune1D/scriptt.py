@@ -2731,24 +2731,23 @@ def main():
     parser.add_argument('--num_time_samples_evaluation', type=int, default=40, help='Number of time samples')
     parser.add_argument('--seed', type=int, default=5678, help='Random seed')
     parser.add_argument('--steps', type=int, default=20000)
-    parser.add_argument('--lattice_size', type=int)
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
 
     args = parser.parse_args()
-
+    LATTICE_SIZE_ISING = 32
     # Setup keys
-    key = jr.PRNGKey(args.seed)
+    key = jr.PRNGKey(5678)
     model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
 
     OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
     OUTPUT_FILE_PTH = os.path.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
-    PLACEHOLDER_ISING_MEAN = jnp.zeros(args.lattice_size)
-    PLACEHOLDER_ISING_STD = jnp.ones(args.lattice_size)
+    PLACEHOLDER_ISING_MEAN = jnp.zeros(LATTICE_SIZE_ISING)
+    PLACEHOLDER_ISING_STD = jnp.ones(LATTICE_SIZE_ISING)
     # Constants calculation
     OLD_BATCH_SIZE = 500
 
 
-    INTEGRATED_TIME = max(get_help_finding_int_time(args.temp, args.lattice_size, 1.0, 1.0, n=100), args.lattice_size)
+    INTEGRATED_TIME = max(get_help_finding_int_time(args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
     COEFF_FOR_BURN_IN=2
     BURN_IN = COEFF_FOR_BURN_IN*INTEGRATED_TIME
 
@@ -2761,7 +2760,7 @@ def main():
     assert NUM_TRAIN_SAMPLES % NUM_CHAINS == 0 and NUM_SAMPLES_VALIDATION % NUM_CHAINS == 0 and NUM_SAMPLES_TEST % NUM_CHAINS == 0
     dataset_key, test_key_new, loader_key = jr.split(loader_key, 3)
 
-    full_dataset = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+    full_dataset = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
 
     # Standardize the dataset
     full_dataset, dataset_mean, dataset_std = create_standardized_dataset(full_dataset)
@@ -2770,10 +2769,10 @@ def main():
     dataloader = DataLoader(full_dataset, NNRGIsingConfig.BATCH_SIZE, loader_key)
 
     # Generate test dataset
-    test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+    test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
     test_dataset = (test_dataset - dataset_mean) / dataset_std
 
-    validation_dataset = sample_from_continuous_relaxation_1D(key_validation, NUM_SAMPLES_VALIDATION, args.lattice_size, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS )
+    validation_dataset = sample_from_continuous_relaxation_1D(key_validation, NUM_SAMPLES_VALIDATION, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS )
     validation_dataset = (validation_dataset - dataset_mean) / dataset_std
     #=========================
 
@@ -2807,7 +2806,7 @@ def main():
                         num_time_samples_test=args.num_time_samples_evaluation,
                         )
             nrg_model = load_model(siren_model_dir + name_of_model, WrapperForNNRG)
-            configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, key_discrete_model, args.lattice_size, NUM_SAMPLES_BASIC_EVAL)
+            configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(test_dataset[:NUM_SAMPLES_BASIC_EVAL], key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)
             fname = "OutputVis" + get_model_file_identifier(lr= parameters[LR_PARAM_NAME],
@@ -2877,7 +2876,7 @@ def main():
         for trial_index, parameters in trials.items():
 
             # Model initialization
-            nrg_model = WrapperForNNRG(depth=int(jnp.ceil(jnp.log2(args.lattice_size))), key=model_key)
+            nrg_model = WrapperForNNRG(depth=int(jnp.ceil(jnp.log2(LATTICE_SIZE_ISING))), key=model_key)
 
 
     
@@ -2898,7 +2897,7 @@ def main():
             )
             per_trial_loss_msgs.append(loss_msgs)
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)
-            sample_quality = evaluate_sample_quality_nnrg(inference_info, test_dataset, key_sample_quality, args.lattice_size)
+            sample_quality = evaluate_sample_quality_nnrg(inference_info, test_dataset, key_sample_quality, LATTICE_SIZE_ISING)
             penalties = penalties_on_test_data(nrg_model, test_dataset, key_ot_penalty, args.num_time_samples_evaluation)
             raw_data = {NLL_METRIC_NAME: penalties["nll"], MMD_METRIC_NAME: sample_quality, KE_PENALTY_NAME: penalties["ke"]}
 

@@ -21,4 +21,4 @@ module load miniforge
 
 cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 
-python src/hypertune1D/scriptt.py
+python src/hypertune1D/scripttmini.py

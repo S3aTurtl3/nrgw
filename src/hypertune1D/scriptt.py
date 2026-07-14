@@ -18,6 +18,9 @@ import pathlib
 import time
 
 import imageio
+from collections.abc import Mapping
+import json
+from typing import Any, Union
 
 
 import jax
@@ -1629,6 +1632,29 @@ BASELINE_LEARNING_RATE = 1e-3
 # %% [markdown]
 # ### helper functions misc
 
+# %% [code]
+CustomData = list[
+    tuple[
+        Mapping[str, Union[int, float, str, bool]],
+        Mapping[str, Union[float, tuple[float, float]]],
+        int,
+        str,
+    ]
+]
+
+
+def make_json_serializable(obj: Any) -> Any:
+    """Recursively converts mappings to dicts and tuples to lists
+
+    to ensure the entire structure is completely JSON serializable.
+    """
+    if isinstance(obj, Mapping):
+        return {key: make_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_serializable(item) for item in obj]
+    else:
+        return obj
+
 
 # %%
 def kinetic_energy_penalty(model, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, regularization_term_key: jr.PRNGKey):
@@ -1928,6 +1954,24 @@ jax_array = jax.random.uniform(key, (4, 10))
 plot_jax_rows_as_images(jax_array)
 """
 
+# %% [markdown]
+### helper functions for visualization
+
+# %% [code]
+def get_discrete_samples_from_model(model, key, lattice_size, num_samples):
+  key_continuous, key_discrete = jr.split(key)
+  samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(model, key, lattice_size))(jr.split(key_continuous, num_samples))
+  discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(samples_from_model, jr.split(key_discrete, num_samples))
+  return discrete_samples
+
+
+# %% [code]
+def get_discrete_samples(continuous_samples, key):
+  key_discrete = jr.split(key, continuous_samples.shape[0])
+  discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(continuous_samples, key_discrete)
+  return discrete_samples
+
+
 # %% [code]
 def compute_variance_of_magnetization(key, nrg_model, batch_size):
   key_discrete, key = jr.split(key)
@@ -2000,6 +2044,108 @@ def visualize_spin_batch(spins, ncols=None, cell_size=1.2, cmap="Greys"):
     fig.tight_layout()
     return fig, axes
 
+# %% [code]
+def compare_model_vs_validation(
+    model_samples,
+    val_samples,
+    ncols=None,
+    cell_size=1.2,
+    cmap="Greys",
+    n_show=None,
+):
+    """
+    Visualize samples from a generative model side-by-side with validation
+    samples, plus a couple of summary statistics for a quick sanity check.
+
+    Args:
+        model_samples: (batch_m, N) array of +-1 spins from the generative model.
+        val_samples:   (batch_v, N) array of +-1 spins from the validation set.
+        ncols: columns per grid (applied to both grids independently).
+        cell_size: size (inches) of each subplot cell.
+        cmap: colormap for the spin strips.
+        n_show: if given, only the first n_show samples of each set are plotted
+                (statistics are still computed on the full arrays passed in).
+
+    Returns:
+        fig: matplotlib figure with two grids (model on top, validation below)
+             and a text panel of summary statistics.
+        stats: dict with per-set mean magnetization, magnetization std,
+               and mean nearest-neighbor correlation <s_i s_{i+1}>.
+    """
+    model_samples = jnp.asarray(model_samples)
+    val_samples = jnp.asarray(val_samples)
+
+    if model_samples.ndim != 2 or val_samples.ndim != 2:
+        raise ValueError("both model_samples and val_samples must be 2D (batch, N)")
+    if model_samples.shape[1] != val_samples.shape[1]:
+        raise ValueError(
+            f"chain length mismatch: model N={model_samples.shape[1]}, "
+            f"val N={val_samples.shape[1]}"
+        )
+
+    def _stats(spins):
+        magnetization = jnp.sum(spins, axis=1)  # per-sample magnetization
+        nn_corr = jnp.mean(spins[:, :-1] * spins[:, 1:])  # <s_i s_{i+1}>, averaged
+        return {
+            "mean_magnetization": float(jnp.mean(magnetization)),
+            "std_magnetization": float(jnp.std(magnetization)),
+            "mean_nn_correlation": float(nn_corr),
+        }
+
+    stats = {
+        "model": _stats(model_samples),
+        "validation": _stats(val_samples),
+    }
+
+    model_plot = model_samples if n_show is None else model_samples[:n_show]
+    val_plot = val_samples if n_show is None else val_samples[:n_show]
+
+    if ncols is None:
+        ncols = math.ceil(math.sqrt(max(model_plot.shape[0], val_plot.shape[0])))
+
+    def _grid_rows(n_needed):
+        return math.ceil(n_needed / ncols)
+
+    rows_model = _grid_rows(model_plot.shape[0])
+    rows_val = _grid_rows(val_plot.shape[0])
+    total_rows = rows_model + rows_val
+
+    fig, axes = plt.subplots(
+        total_rows, ncols,
+        figsize=(ncols * cell_size, total_rows * cell_size * 0.4 + 0.6),
+        squeeze=False,
+    )
+
+    def _fill(axes_block, data, label):
+        n = data.shape[0]
+        nrows_block = axes_block.shape[0]
+        for idx in range(nrows_block * ncols):
+            r, c = divmod(idx, ncols)
+            ax = axes_block[r][c]
+            if idx < n:
+                strip = data[idx].reshape(1, -1)
+                ax.imshow(strip, cmap=cmap, vmin=-1, vmax=1, aspect="auto")
+                if idx == 0:
+                    ax.set_ylabel(label, fontsize=9, rotation=0, ha="right", va="center")
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+    _fill(axes[:rows_model], model_plot, "model")
+    _fill(axes[rows_model:], val_plot, "validation")
+
+    stats_txt = (
+        f"model:      <m>={stats['model']['mean_magnetization']:.3f}  "
+        f"std(m)={stats['model']['std_magnetization']:.3f}  "
+        f"<s_i s_i+1>={stats['model']['mean_nn_correlation']:.3f}\n"
+        f"validation: <m>={stats['validation']['mean_magnetization']:.3f}  "
+        f"std(m)={stats['validation']['std_magnetization']:.3f}  "
+        f"<s_i s_i+1>={stats['validation']['mean_nn_correlation']:.3f}"
+    )
+    fig.suptitle(stats_txt, fontsize=8, family="monospace", y=1.02, ha="center")
+    fig.tight_layout()
+
+    return fig, stats
+
 
 #
 # %% [markdown]
@@ -2033,6 +2179,33 @@ class KESchedule:
 def choose_relevant_sample_to_use_in_KE_penalty(configuration):
   return configuration[:2] # this seems really bad
 
+
+def get_model_file_identifier(lr: float,
+               ke_schedule: KESchedule,
+               coeff_marginal_regularization: float,
+               coeff_main_loss_term: float,
+               num_time_samples,
+               num_time_samples_test,
+               steps=10000,
+               check_for_overfit_every=100,
+               desc=""):
+  return f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_{desc}test"
+
+
+
+def get_model_file_name(
+               lr: float,
+               ke_schedule: KESchedule,
+               coeff_marginal_regularization: float,
+               coeff_main_loss_term: float,
+               num_time_samples,
+               num_time_samples_test,
+               steps=10000,
+               check_for_overfit_every=100,
+               desc=""):
+    return get_model_file_identifier(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc) + ".eqx"
+
+
 PATIENCE_NUM_EPOCHS = 75
 def train_nnrg(model: WrapperForNNRGSubModule,
                dataloader: StreamingDataLoader,
@@ -2058,7 +2231,7 @@ def train_nnrg(model: WrapperForNNRGSubModule,
 
   tracker = OverfitTracker(patience=PATIENCE_NUM_EPOCHS*dataloader.array.shape[0]/dataloader.batch_size/check_for_overfit_every, min_delta=0.01)
 
-  fname = f"m{lr}{steps}{ke_schedule.coeff}{desc}_test" + ".eqx"
+  fname = get_model_file_name(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc)
   opt_state_fname = f"m{lr}{steps}_test.eqx"
   pth = siren_model_dir + fname
   pth_opt_state = siren_model_dir + opt_state_fname
@@ -2617,12 +2790,6 @@ class NNRGIsingConfig:
 
 
 
-
-
-
-
-
-
 def main():
     parser = argparse.ArgumentParser(description='Train NNRG model.')
     parser.add_argument('--batch_size', type=int, help='Batch size')
@@ -2687,10 +2854,46 @@ def main():
     PARAM_NAME_MARGINAL_REGULARIZATION = "margin"
     PARAM_NAME_MAIN_TERM = "mainCoeff"
     PENALTY_COEFF_NAME = "penaltyCoeff"
+    PARAM_NAME_STEPS_TIL_0 = "st0"
     NLL_METRIC_NAME = "NLL"
     MMD_METRIC_NAME = "MMD"
     KE_PENALTY_NAME = "KE"
+
+    def make_and_save_visualizations_of_best_models(frontier, key_frontier):
+        key_frontier_visualizations = jr.split(key_frontier, len(frontier))
+        NUM_SAMPLES_BASIC_EVAL = 500
+        for i, (parameters, metrics, trial_index, arm_name) in enumerate(frontier):
+            # visualize model samples compared to test dataset
+            key_current_parameterization = key_frontier_visualizations[i]
+            key_discrete_model, key_discrete_test = jr.split(key_current_parameterization)
+            name_of_model = get_model_file_name(
+                        lr= parameters[LR_PARAM_NAME],
+                        ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
+                        coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
+                        coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
+                        steps=args.steps,
+                        desc=f"hypersweep{tuple(parameters.items())}",
+                        num_time_samples = args.num_time_samples,
+                        num_time_samples_test=args.num_time_samples_evaluation,
+                        )
+            nrg_model = load_model(siren_model_dir + name_of_model, WrapperForNNRG)
+            configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, key_discrete_model, args.lattice_size, NUM_SAMPLES_BASIC_EVAL)
+            configs_from_test_dataset = get_discrete_samples(test_dataset[:NUM_SAMPLES_BASIC_EVAL], key_discrete_test)
+            fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)
+            fname = "OutputVis" + get_model_file_identifier(lr= parameters[LR_PARAM_NAME],
+                        ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
+                        coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
+                        coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
+                        steps=args.steps,
+                        desc=f"hypersweep{tuple(parameters.items())}",
+                        num_time_samples = args.num_time_samples,
+                        num_time_samples_test=args.num_time_samples_evaluation) + ".pdf"
+            fig.savefig(os.join(OUTPUT_DIR, fname))
+
+
+
     # Configure and experiment with the desired parameters
+    STEPS_IN_EPOCH = dataloader.array.shape[0]/dataloader.batch_size
     client.configure_experiment(parameters=[
         RangeParameterConfig(
             name="penaltyCoeff",
@@ -2709,6 +2912,11 @@ def main():
             parameter_type="float",
             scaling="log"
         ),
+        RangeParameterConfig(
+        name=PARAM_NAME_STEPS_TIL_0,
+        bounds=(3*STEPS_IN_EPOCH, PATIENCE_NUM_EPOCHS*STEPS_IN_EPOCH/3), # from 3 epochs to half
+        parameter_type="int",
+    ),
         
         ChoiceParameterConfig(
                 name="learning rate",
@@ -2755,7 +2963,8 @@ def main():
                 dataset_test = validation_dataset,
                 num_time_samples_test= args.num_time_samples_evaluation,
                 desc=str(tuple(parameters.items())) + str(args),
-                steps=args.steps
+                steps=args.steps,
+                ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]) 
             )
             per_trial_loss_msgs.append(loss_msgs)
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)
@@ -2765,12 +2974,10 @@ def main():
 
             client.complete_trial(trial_index=trial_index, raw_data=raw_data)
 
-    best_parameters, prediction, index, name = client.get_best_parameterization()
-    
-
-
+    frontier = client.get_pareto_frontier()
+    make_and_save_visualizations_of_best_models(frontier, evaluation_key)
     with open(OUTPUT_FILE_PTH, "w") as file:
-        json.dump({"best_params": best_parameters, "prediction": prediction, "index": index, "name": name, "loss_msgs": per_trial_loss_msgs}, file)
+      json.dump({"frontier": make_json_serializable(frontier), "loss_msgs": per_trial_loss_msgs}, file)
 
 
 

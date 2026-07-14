@@ -4,8 +4,8 @@
 #SBATCH -p gpu_test # Partition(s) (separate with
 #SBATCH --gres=gpu:1
 # commas if using multiple)
-#SBATCH --ntasks=11 # Number of cores
-#SBATCH -t 0-01:30:00 # Time (D-HH:MM:SS)
+#SBATCH --ntasks=4 # Number of cores
+#SBATCH -t 0-01:00:00 # Time (D-HH:MM:SS)
 #SBATCH --mem=40G # Memory
 #SBATCH -o icepy_%j.o # Name of standard output file
 #SBATCH -e icepy_%j.e # Name of standard error file

@@ -3,7 +3,7 @@
 #SBATCH -J ice # Job name
 #SBATCH -p iaifi_gpu # Partition(s) (separate with
 # commas if using multiple)
-#SBATCH --ntasks= 32 # Number of cores
+#SBATCH --ntasks=32 # Number of cores
 #SBATCH -t 0-01:30:00 # Time (D-HH:MM:SS)
 #SBATCH --mem=80G # Memory
 #SBATCH -o icepy_%j.o # Name of standard output file

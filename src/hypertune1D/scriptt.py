@@ -2179,6 +2179,7 @@ class KESchedule:
 def choose_relevant_sample_to_use_in_KE_penalty(configuration):
   return configuration[:2] # this seems really bad
 
+PATIENCE_NUM_EPOCHS = 75
 
 def get_model_file_identifier(lr: float,
                ke_schedule: KESchedule,
@@ -2189,7 +2190,7 @@ def get_model_file_identifier(lr: float,
                steps=10000,
                check_for_overfit_every=100,
                desc=""):
-  return f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_{desc}test"
+  return f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test"
 
 
 
@@ -2206,7 +2207,7 @@ def get_model_file_name(
     return get_model_file_identifier(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc) + ".eqx"
 
 
-PATIENCE_NUM_EPOCHS = 75
+
 def train_nnrg(model: WrapperForNNRGSubModule,
                dataloader: StreamingDataLoader,
                loss_key,

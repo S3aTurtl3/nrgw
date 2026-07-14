@@ -17,7 +17,7 @@
 
 # first use version of script with only 2 trials and dataset size 100, ten increase requested time
 # pixi add wandb for final
-module load miniforge
+module load Miniforge3/26.1.0-fasrc01
 
 cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 

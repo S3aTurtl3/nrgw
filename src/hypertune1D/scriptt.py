@@ -2809,7 +2809,7 @@ def main():
 
     # Setup keys
     key = jr.PRNGKey(args.seed)
-    model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 7)
+    model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
 
     OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
     OUTPUT_FILE_PTH = os.join(OUTPUT_DIR, OUTPUT_FILE_NAME)

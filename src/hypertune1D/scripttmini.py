@@ -2820,7 +2820,7 @@ def main():
     model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
 
     OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
-    OUTPUT_FILE_PTH = os.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
+    OUTPUT_FILE_PTH = os.path.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
     PLACEHOLDER_ISING_MEAN = jnp.zeros(args.lattice_size)
     PLACEHOLDER_ISING_STD = jnp.ones(args.lattice_size)
     # Constants calculation
@@ -2897,7 +2897,7 @@ def main():
                         desc=f"hypersweep{tuple(parameters.items())}",
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation) + ".pdf"
-            fig.savefig(os.join(OUTPUT_DIR, fname))
+            fig.savefig(os.path.join(OUTPUT_DIR, fname))
 
 
 

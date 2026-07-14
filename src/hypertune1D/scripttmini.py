@@ -2979,7 +2979,7 @@ def main():
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)
             sample_quality = evaluate_sample_quality_nnrg(inference_info, test_dataset, key_sample_quality, LATTICE_SIZE_ISING)
             penalties = penalties_on_test_data(nrg_model, test_dataset, key_ot_penalty, args.num_time_samples_evaluation)
-            raw_data = {NLL_METRIC_NAME: penalties["nll"], MMD_METRIC_NAME: sample_quality, KE_PENALTY_NAME: penalties["ke"]}
+            raw_data = {NLL_METRIC_NAME: float(penalties["nll"]), MMD_METRIC_NAME: float(sample_quality), KE_PENALTY_NAME: float(penalties["ke"])}
 
             client.complete_trial(trial_index=trial_index, raw_data=raw_data)
 

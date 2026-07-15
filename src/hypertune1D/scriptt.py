@@ -56,8 +56,9 @@ from numpyro.diagnostics import gelman_rubin, autocorrelation, effective_sample_
 
 
 #here = pathlib.Path(os.getcwd())
-OUTPUT_DIR = "/n/holyscratch01"
-siren_model_dir = os.path.join(OUTPUT_DIR, "models")
+TEMP_DIR = "/scratch"
+OUTPUT_DIR = "/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff"
+siren_model_dir = os.path.join(TEMP_DIR, "models")
 
 
 ## NN Architecture

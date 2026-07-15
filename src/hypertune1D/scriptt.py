@@ -57,7 +57,7 @@ from numpyro.diagnostics import gelman_rubin, autocorrelation, effective_sample_
 
 #here = pathlib.Path(os.getcwd())
 OUTPUT_DIR = "/n/holyscratch01"
-siren_model_dir = os.path.join(OUTPUT_DIR, "/models")
+siren_model_dir = os.path.join(OUTPUT_DIR, "models")
 
 
 ## NN Architecture
@@ -2249,8 +2249,8 @@ def train_nnrg(model: WrapperForNNRGSubModule,
 
   fname = get_model_file_name(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc)
   opt_state_fname = f"m{lr}{steps}_test.eqx"
-  pth = siren_model_dir + fname
-  pth_opt_state = siren_model_dir + opt_state_fname
+  pth = os.path.join(siren_model_dir,fname)
+  pth_opt_state = os.path.join(siren_model_dir,opt_state_fname)
 
 
   NUM_TIME_SAMPLES = 40
@@ -2335,101 +2335,6 @@ def train_nnrg(model: WrapperForNNRGSubModule,
 
 
 # %%
-def train_nnrg_ising(model: WrapperForNNRGSubModule,
-               dataloader: StreamingDataLoader,
-               loss_key,
-               lr: float,
-               steps=10000,
-               exact_logp=True,
-               weight_decay=1e-5,
-               print_every=100,
-               desc="",
-                     T=2.0,
-                     save_every=1500):
-    """
-    desc:
-        brief description of this training"""
-
-    step_size = steps*2//3
-    gamma = 0.7
-
-    # Create the learning rate schedule
-    # optax.exponential_decay provides a simple way to implement this step-wise gamma decay.
-    scheduler = optax.exponential_decay(
-    init_value=lr,
-    transition_steps=step_size,
-    decay_rate=gamma,
-    # Setting the staircase parameter to True makes the decay step-wise,
-    # matching the PyTorch StepLR behavior.
-    staircase=True
-)
-
-    optim = optax.adamw(learning_rate=scheduler, weight_decay=weight_decay)
-    opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
-    K, alpha = get_K_alpha(dataloader.data_size, T)
-    M = K + alpha * jnp.eye(dataloader.data_size)
-    upper_bound_on_component_variance = jnp.max(jnp.diag(M))
-    upper_bound_on_component_std = jnp.sqrt(upper_bound_on_component_variance)
-    potential_energy = generate_potential_fn(K, alpha, dataloader.data_size)
-
-    fname = f"m{lr}{steps}{T}_test" + ".eqx"
-    opt_state_fname = f"m{lr}{steps}{T}.eqx"
-    pth = siren_model_dir + fname
-    pth_opt_state = siren_model_dir + opt_state_fname
-
-    def PDD_and_regularization(model, lattice_size, batch_size, loss_key):
-      latent_key, model_key = jr.split(loss_key, 2)
-      latent_key = jr.split(latent_key, batch_size)
-      model_key = jr.split(model_key, batch_size)
-      z = jax.vmap(lambda key: jr.normal(key, (1,)))(latent_key)
-      generated, intra_latent, log_likelihood_partial, delta_log_likelihood =jax.vmap(lambda key, latent: model.generate(key, latent))(model_key, z)
-      log_likelihood = jax.vmap(normal_log_likelihood)(z)+log_likelihood_partial - delta_log_likelihood
-      suppression_of_tendancy_to_collapse_to_one_mode = 0 # this variable can be used to implement the symmetry regularization mentioned in Appendix D
-      main_loss_term = jnp.mean(log_likelihood + jax.vmap(potential_energy)(generated*upper_bound_on_component_std))
-      regularization_penalty = MARGINAL_REGULARIZATION_COEFF*_regularization_helper_function(intra_latent)
-      return main_loss_term, regularization_penalty, suppression_of_tendancy_to_collapse_to_one_mode
-
-    @eqx.filter_value_and_grad(has_aux=True)
-    def loss(model, data, loss_key):
-        main_loss_term, regularization_penalty, symmetry_regularization = PDD_and_regularization(model, dataloader.data_size, dataloader.batch_size, loss_key)
-        total_loss = main_loss_term + regularization_penalty #+ SYMMETRY_REGULARIZATION_COEFF*symmetry_regularization
-        return total_loss, regularization_penalty
-
-    @eqx.filter_jit
-    def make_step(model: WrapperForNNRGSubModule, opt_state, data, loss_key):
-
-        (total_loss, regularization_penalty), grads = loss(model, data, loss_key)
-        loss_key = jr.split(loss_key, 1)[0]
-        updates, opt_state = optim.update(
-            grads, opt_state, eqx.filter(model, eqx.is_inexact_array)
-        )
-        model = eqx.apply_updates(model, updates)
-        return total_loss, model, opt_state, loss_key, regularization_penalty
-
-    step = 0
-    best_model = None
-    best_loss = float('inf')
-    while step < steps:
-        start = time.time()
-
-        data = dataloader(step)
-        step = step + 1
-        value, model, opt_state, loss_key, regularization_penalty = make_step(
-            model, opt_state, data, loss_key
-        )
-
-        end = time.time()
-        if (step % print_every) == 0 or step == steps - 1:
-            if value < best_loss:
-                best_loss = value
-                best_model = model
-            print(f"Step: {step}, Loss: {value}, Reg Penalty: {regularization_penalty}, Computation time: {end - start}")
-        if (step % save_every) == 0 or step == steps - 1 or step == steps or step == 1:
-
-          eqx.tree_serialise_leaves(pth_opt_state, {"step": step, "opt": opt_state})
-          nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
-
-    return best_model, opt_state
 
 # %%
 def create_visualizations_nnrg(inference_info: InferenceInfo, sample_from_model: Callable[[jr.PRNGKey], jax.Array ], out_path: str, dataset: jax.Array, width: int, height: int, sample_key: jr.PRNGKey):
@@ -2731,10 +2636,13 @@ def main():
     parser.add_argument('--num_time_samples_evaluation', type=int, default=40, help='Number of time samples')
     parser.add_argument('--seed', type=int, default=5678, help='Random seed')
     parser.add_argument('--steps', type=int, default=20000)
+    parser.add_argument('--lattice_size', type=int)
+    parser.add_argument('--num_train_samples', type=int)
+    parser.add_argument('--num_test_samples', type=int)
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
 
     args = parser.parse_args()
-    LATTICE_SIZE_ISING = 32
+    LATTICE_SIZE_ISING = args.lattice_size
     # Setup keys
     key = jr.PRNGKey(5678)
     model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
@@ -2753,8 +2661,8 @@ def main():
 
     #TAINTED================
     # Generate a dataset of size 19000
-    NUM_TRAIN_SAMPLES = 19000
-    NUM_SAMPLES_TEST = 2500
+    NUM_TRAIN_SAMPLES = args.num_train_samples
+    NUM_SAMPLES_TEST = args.num_test_samples
     NUM_SAMPLES_VALIDATION = 500
     NUM_CHAINS = 100
     assert NUM_TRAIN_SAMPLES % NUM_CHAINS == 0 and NUM_SAMPLES_VALIDATION % NUM_CHAINS == 0 and NUM_SAMPLES_TEST % NUM_CHAINS == 0
@@ -2805,7 +2713,7 @@ def main():
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation,
                         )
-            nrg_model = load_model(siren_model_dir + name_of_model, WrapperForNNRG)
+            nrg_model = load_model(os.path.join(siren_model_dir, name_of_model), WrapperForNNRG)
             configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(test_dataset[:NUM_SAMPLES_BASIC_EVAL], key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)

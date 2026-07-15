@@ -2639,6 +2639,8 @@ def main():
     parser.add_argument('--lattice_size', type=int)
     parser.add_argument('--num_train_samples', type=int)
     parser.add_argument('--num_test_samples', type=int)
+    parser.add_argument('--num_val_samples', type=int)
+    parser.add_argument('--num_trials', type=int)
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
 
     args = parser.parse_args()
@@ -2663,7 +2665,7 @@ def main():
     # Generate a dataset of size 19000
     NUM_TRAIN_SAMPLES = args.num_train_samples
     NUM_SAMPLES_TEST = args.num_test_samples
-    NUM_SAMPLES_VALIDATION = 500
+    NUM_SAMPLES_VALIDATION = args.num_val_samples
     NUM_CHAINS = 100
     assert NUM_TRAIN_SAMPLES % NUM_CHAINS == 0 and NUM_SAMPLES_VALIDATION % NUM_CHAINS == 0 and NUM_SAMPLES_TEST % NUM_CHAINS == 0
     dataset_key, test_key_new, loader_key = jr.split(loader_key, 3)
@@ -2777,7 +2779,7 @@ def main():
 
 
 
-    for _ in range(20):
+    for _ in range(args.num_trials):
         evaluation_key, key_nll, key_sample_quality, key_ot_penalty = jr.split(evaluation_key, 4)
         trials = client.get_next_trials(max_trials=1)
         per_trial_loss_msgs = []

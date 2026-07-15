@@ -27,9 +27,6 @@ orbax-checkpoint = ">=0.12.0,<0.13"
 ax-platform = ">=1.2.4,<2"
 jaxlib = { version = "*", build = "*cuda12*" }
 
-[system-requirements]
-cuda = "12"
-
 [feature.cuda.target.linux-64.dependencies]
 jaxlib = { version = "*", build = "*cuda12*" }
 

@@ -57,8 +57,10 @@ from numpyro.diagnostics import gelman_rubin, autocorrelation, effective_sample_
 
 #here = pathlib.Path(os.getcwd())
 TEMP_DIR = "/scratch"
+
 OUTPUT_DIR = "/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff"
 siren_model_dir = os.path.join(TEMP_DIR, "models")
+os.makedirs(siren_model_dir, exist_ok=True)
 
 
 ## NN Architecture
@@ -2206,7 +2208,7 @@ def get_model_file_identifier(lr: float,
                steps=10000,
                check_for_overfit_every=100,
                desc=""):
-  return str(hash(f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test"))
+  return "m"+str(hash(f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test"))
 
 
 

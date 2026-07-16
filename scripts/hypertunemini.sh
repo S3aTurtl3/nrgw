@@ -21,4 +21,4 @@ module load Miniforge3/26.1.0-fasrc01
 
 cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 
-pixi run python src/hypertune1D/scriptt.py --batch_size=50 --steps=100 --temp=199 --num_trials=3 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32
+pixi run -e gpu python src/hypertune1D/scriptt.py --batch_size=50 --steps=100 --temp=199 --num_trials=3 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32

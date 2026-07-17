@@ -57,11 +57,6 @@ from numpyro.diagnostics import gelman_rubin, autocorrelation, effective_sample_
 
 
 #here = pathlib.Path(os.getcwd())
-TEMP_DIR = "/scratch"
-
-OUTPUT_DIR = "/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff"
-siren_model_dir = os.path.join(TEMP_DIR, "models")
-os.makedirs(siren_model_dir, exist_ok=True)
 
 
 ## NN Architecture
@@ -2238,6 +2233,7 @@ def train_nnrg(model: WrapperForNNRGSubModule,
                dataset_test,
                num_time_samples_test,
                ke_schedule: KESchedule,
+               directory_model_saving,
                steps=10000,
                exact_logp=True,
                weight_decay=1e-5,
@@ -2253,8 +2249,8 @@ def train_nnrg(model: WrapperForNNRGSubModule,
 
   fname = get_model_file_name(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc)
   opt_state_fname = f"m{lr}{steps}_test.eqx"
-  pth = os.path.join(siren_model_dir,fname)
-  pth_opt_state = os.path.join(siren_model_dir,opt_state_fname)
+  pth = os.path.join(directory_model_saving,fname)
+  pth_opt_state = os.path.join(directory_model_saving,opt_state_fname)
 
 
   NUM_TIME_SAMPLES = 40
@@ -2646,6 +2642,8 @@ def main():
     parser.add_argument('--num_val_samples', type=int)
     parser.add_argument('--num_trials', type=int)
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
+    parser.add_argument('--out', help='the directory')
+    parser.add_argument('--dir_model_weights')
 
     args = parser.parse_args()
     LATTICE_SIZE_ISING = args.lattice_size
@@ -2653,7 +2651,11 @@ def main():
     key = jr.PRNGKey(5678)
     model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
 
+    OUTPUT_DIR = args.out
+    TEMP_DIR = args.dir_model_weights
     OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
+    model_saving_dir = os.path.join(TEMP_DIR, "models")
+    os.makedirs(model_saving_dir, exist_ok=True)
     OUTPUT_FILE_PTH = os.path.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
     PLACEHOLDER_ISING_MEAN = jnp.zeros(LATTICE_SIZE_ISING)
     PLACEHOLDER_ISING_STD = jnp.ones(LATTICE_SIZE_ISING)
@@ -2722,7 +2724,7 @@ def main():
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation,
                         )
-            nrg_model = load_model(os.path.join(siren_model_dir, name_of_model), WrapperForNNRG)
+            nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
             configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(test_dataset[:NUM_SAMPLES_BASIC_EVAL], key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)
@@ -2782,7 +2784,7 @@ def main():
     objective=f"-{NLL_METRIC_NAME}, -{MMD_METRIC_NAME}, -{KE_PENALTY_NAME}",
     outcome_constraints=[f"{NLL_METRIC_NAME} <= 300", f"{MMD_METRIC_NAME} <= 0.04", f"{KE_PENALTY_NAME} <= 0.2"],
 )
-
+    
     
 
 
@@ -2810,7 +2812,8 @@ def main():
                 num_time_samples_test= args.num_time_samples_evaluation,
                 desc=get_description_of_job(),
                 steps=args.steps,
-                ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]) 
+                ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
+                directory_model_saving=model_saving_dir
             )
             per_trial_loss_msgs.append(loss_msgs)
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)
@@ -2831,5 +2834,6 @@ if __name__ == '__main__':
     # To run in Colab without crashing on sys.argv:
     
     if 'ipykernel' in sys.modules:
-        sys.argv = ['']
+        # rendering the following as a sys.arvlist: --batch_size=50 --steps=100 --temp=199 --num_trials=3 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32
+        sys.argv = ['', '--batch_size=50', '--steps=100', '--temp=199', '--num_trials=3',  '--num_train_samples=100', '--num_test_samples=100', '--num_val_samples=100', '--lattice_size=32', '--out=/', '--dir_model_weights=/scratch' ]
     main()

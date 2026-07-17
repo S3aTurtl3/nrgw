@@ -2209,7 +2209,7 @@ def get_model_file_identifier(lr: float,
                steps=10000,
                check_for_overfit_every=100,
                desc=""):
-  return "m"+str(hashlib.md5(f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test".encode('utf-8')))
+  return "m"+hashlib.md5(f"m{lr}{steps}{ke_schedule.coeff}_marg{coeff_marginal_regularization}_main{coeff_main_loss_term}_ntime{num_time_samples}_{num_time_samples_test}_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}_{desc}test".encode('utf-8')).hexdigest()
 
 
 
@@ -2702,6 +2702,9 @@ def main():
     MMD_METRIC_NAME = "MMD"
     KE_PENALTY_NAME = "KE"
 
+    def get_description_of_job():
+        return str(args) + f"lsize{LATTICE_SIZE_ISING}"
+
     def make_and_save_visualizations_of_best_models(frontier, key_frontier):
         key_frontier_visualizations = jr.split(key_frontier, len(frontier))
         NUM_SAMPLES_BASIC_EVAL = 500
@@ -2715,7 +2718,7 @@ def main():
                         coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
                         coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
                         steps=args.steps,
-                        desc=f"hypersweep{tuple(parameters.items())}",
+                        desc=get_description_of_job(),
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation,
                         )
@@ -2728,7 +2731,7 @@ def main():
                         coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
                         coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
                         steps=args.steps,
-                        desc=f"hypersweep{tuple(parameters.items())}",
+                        desc=get_description_of_job(),
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation) + ".pdf"
             fig.savefig(os.path.join(OUTPUT_DIR, fname))
@@ -2780,7 +2783,7 @@ def main():
     outcome_constraints=[f"{NLL_METRIC_NAME} <= 300", f"{MMD_METRIC_NAME} <= 0.04", f"{KE_PENALTY_NAME} <= 0.2"],
 )
 
-
+    
 
 
     for _ in range(args.num_trials):
@@ -2805,7 +2808,7 @@ def main():
                 num_time_samples=args.num_time_samples,
                 dataset_test = validation_dataset,
                 num_time_samples_test= args.num_time_samples_evaluation,
-                desc=str(tuple(parameters.items())) + str(args),
+                desc=get_description_of_job(),
                 steps=args.steps,
                 ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]) 
             )

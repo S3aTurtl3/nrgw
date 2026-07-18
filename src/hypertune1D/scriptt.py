@@ -1980,9 +1980,10 @@ def sample_s_given_x(rng_key, x):
 
     return s
 
-def get_discrete_samples_from_model(model, key, lattice_size, num_samples):
+def get_discrete_samples_from_model(model, mean, std, key, lattice_size, num_samples):
   key_continuous, key_discrete = jr.split(key)
   samples_from_model = jax.vmap(lambda key: sample_from_full_nnrg(model, key, lattice_size))(jr.split(key_continuous, num_samples))
+  samples_from_model = samples_from_model * std + mean
   discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(samples_from_model, jr.split(key_discrete, num_samples))
   return discrete_samples
 
@@ -2725,17 +2726,16 @@ def main():
     else:
         dataset_key, test_key_new, loader_key = jr.split(loader_key, 3)
 
-        full_dataset = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+        all_data = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES + NUM_SAMPLES_TEST + NUM_SAMPLES_VALIDATION, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
 
+        
         # Standardize the dataset
         full_dataset, dataset_mean, dataset_std = create_standardized_dataset(full_dataset)
+        all_data, dataset_mean, dataset_std = create_standardized_dataset(all_data)
+        full_dataset = all_data[:NUM_TRAIN_SAMPLES]
+        test_dataset = all_data[NUM_TRAIN_SAMPLES:NUM_TRAIN_SAMPLES+NUM_SAMPLES_TEST]
+        validation_dataset = all_data[NUM_TRAIN_SAMPLES+NUM_SAMPLES_TEST:NUM_TRAIN_SAMPLES+NUM_SAMPLES_TEST+NUM_SAMPLES_VALIDATION]
 
-        # Generate test dataset
-        test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
-        test_dataset = (test_dataset - dataset_mean) / dataset_std
-
-        validation_dataset = sample_from_continuous_relaxation_1D(key_validation, NUM_SAMPLES_VALIDATION, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
-        validation_dataset = (validation_dataset - dataset_mean) / dataset_std
 
         np.savez(
             DATA_CACHE_PATH,
@@ -2765,9 +2765,11 @@ def main():
     def get_description_of_job():
         return str(args) + f"lsize{LATTICE_SIZE_ISING}"
 
-    def make_and_save_visualizations_of_best_models(frontier, key_frontier):
+    def make_and_save_visualizations_of_best_models(frontier, key_frontier, test_dataset):
+        
         key_frontier_visualizations = jr.split(key_frontier, len(frontier))
         NUM_SAMPLES_BASIC_EVAL = 500
+        comparison_dataset = test_dataset[:NUM_SAMPLES_BASIC_EVAL] * dataset_std + dataset_mean
         for i, (parameters, metrics, trial_index, arm_name) in enumerate(frontier):
             # visualize model samples compared to test dataset
             key_current_parameterization = key_frontier_visualizations[i]
@@ -2783,8 +2785,8 @@ def main():
                         num_time_samples_test=args.num_time_samples_evaluation,
                         )
             nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
-            configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
-            configs_from_test_dataset = get_discrete_samples(test_dataset[:NUM_SAMPLES_BASIC_EVAL], key_discrete_test)
+            configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
+            configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)
             fname = "OutputVis" + get_model_file_identifier(lr= parameters[LR_PARAM_NAME],
                         ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),

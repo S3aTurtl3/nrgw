@@ -2684,9 +2684,12 @@ def main():
     OUTPUT_DIR = args.out
     TEMP_DIR = args.dir_model_weights
     OUTPUT_FILE_NAME = hashlib.md5(f"tuning{vars(args)}".encode('utf-8')).hexdigest() + ".json"
-    model_saving_dir = os.path.join(TEMP_DIR, "models")
+    temp_tag = f"{args.lattice_size}T{args.temp:g}".replace(".", "p")
+    model_saving_dir = os.path.join(TEMP_DIR, "models", temp_tag)
     os.makedirs(model_saving_dir, exist_ok=True)
-    OUTPUT_FILE_PTH = os.path.join(OUTPUT_DIR, OUTPUT_FILE_NAME)
+    OUTPUT_FILE_SUBDIR = os.path.join(OUTPUT_DIR, temp_tag)
+    os.makedirs(OUTPUT_FILE_SUBDIR, exist_ok=True)
+    OUTPUT_FILE_PTH = os.path.join(OUTPUT_FILE_SUBDIR, OUTPUT_FILE_NAME)
     PLACEHOLDER_ISING_MEAN = jnp.zeros(LATTICE_SIZE_ISING)
     PLACEHOLDER_ISING_STD = jnp.ones(LATTICE_SIZE_ISING)
     # Constants calculation
@@ -2709,7 +2712,7 @@ def main():
     # as the script's final output (OUTPUT_DIR), NOT the model-weights directory.
     # If that cache file already exists, load the datasets from it instead of
     # regenerating them.
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     DATA_CACHE_FILE_NAME = "dataset_cache_" + hashlib.md5(
         f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{args.seed}".encode('utf-8')
     ).hexdigest() + ".npz"
@@ -2796,7 +2799,7 @@ def main():
                         desc=get_description_of_job(),
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation) + ".pdf"
-            fig.savefig(os.path.join(OUTPUT_DIR, fname))
+            fig.savefig(os.path.join(OUTPUT_FILE_SUBDIR, fname))
 
 
 

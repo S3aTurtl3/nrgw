@@ -2733,7 +2733,6 @@ def main():
 
         
         # Standardize the dataset
-        full_dataset, dataset_mean, dataset_std = create_standardized_dataset(full_dataset)
         all_data, dataset_mean, dataset_std = create_standardized_dataset(all_data)
         full_dataset = all_data[:NUM_TRAIN_SAMPLES]
         test_dataset = all_data[NUM_TRAIN_SAMPLES:NUM_TRAIN_SAMPLES+NUM_SAMPLES_TEST]

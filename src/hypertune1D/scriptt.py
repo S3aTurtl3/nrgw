@@ -2703,22 +2703,51 @@ def main():
     NUM_SAMPLES_VALIDATION = args.num_val_samples
     NUM_CHAINS = 100
     assert NUM_TRAIN_SAMPLES % NUM_CHAINS == 0 and NUM_SAMPLES_VALIDATION % NUM_CHAINS == 0 and NUM_SAMPLES_TEST % NUM_CHAINS == 0
-    dataset_key, test_key_new, loader_key = jr.split(loader_key, 3)
 
-    full_dataset = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+    # Cache generated train/test/validation datasets to a file in the same directory
+    # as the script's final output (OUTPUT_DIR), NOT the model-weights directory.
+    # If that cache file already exists, load the datasets from it instead of
+    # regenerating them.
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    DATA_CACHE_FILE_NAME = "dataset_cache_" + hashlib.md5(
+        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{args.seed}".encode('utf-8')
+    ).hexdigest() + ".npz"
+    DATA_CACHE_PATH = os.path.join(OUTPUT_DIR, DATA_CACHE_FILE_NAME)
 
-    # Standardize the dataset
-    full_dataset, dataset_mean, dataset_std = create_standardized_dataset(full_dataset)
+    if os.path.exists(DATA_CACHE_PATH):
+        cached = np.load(DATA_CACHE_PATH)
+        full_dataset = jnp.array(cached["full_dataset"])
+        dataset_mean = jnp.array(cached["dataset_mean"])
+        dataset_std = jnp.array(cached["dataset_std"])
+        test_dataset = jnp.array(cached["test_dataset"])
+        validation_dataset = jnp.array(cached["validation_dataset"])
+        loader_key = jr.fold_in(loader_key, 0)  # keep RNG stream consistent w/ non-cached path
+    else:
+        dataset_key, test_key_new, loader_key = jr.split(loader_key, 3)
+
+        full_dataset = sample_from_continuous_relaxation_1D(dataset_key, NUM_TRAIN_SAMPLES, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+
+        # Standardize the dataset
+        full_dataset, dataset_mean, dataset_std = create_standardized_dataset(full_dataset)
+
+        # Generate test dataset
+        test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+        test_dataset = (test_dataset - dataset_mean) / dataset_std
+
+        validation_dataset = sample_from_continuous_relaxation_1D(key_validation, NUM_SAMPLES_VALIDATION, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
+        validation_dataset = (validation_dataset - dataset_mean) / dataset_std
+
+        np.savez(
+            DATA_CACHE_PATH,
+            full_dataset=np.asarray(full_dataset),
+            dataset_mean=np.asarray(dataset_mean),
+            dataset_std=np.asarray(dataset_std),
+            test_dataset=np.asarray(test_dataset),
+            validation_dataset=np.asarray(validation_dataset),
+        )
 
     # Instantiate the regular DataLoader
     dataloader = DataLoader(full_dataset, NNRGIsingConfig.BATCH_SIZE, loader_key)
-
-    # Generate test dataset
-    test_dataset = sample_from_continuous_relaxation_1D(test_key_new, NUM_SAMPLES_TEST, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS)
-    test_dataset = (test_dataset - dataset_mean) / dataset_std
-
-    validation_dataset = sample_from_continuous_relaxation_1D(key_validation, NUM_SAMPLES_VALIDATION, LATTICE_SIZE_ISING, args.temp, INTEGRATED_TIME, BURN_IN, NUM_CHAINS )
-    validation_dataset = (validation_dataset - dataset_mean) / dataset_std
     #=========================
 
 
@@ -2865,5 +2894,5 @@ if __name__ == '__main__':
     
     if 'ipykernel' in sys.modules:
         # rendering the following as a sys.arvlist: --batch_size=50 --steps=100 --temp=199 --num_trials=3 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32
-        sys.argv = ['', '--batch_size=50', '--steps=100', '--temp=199', '--num_trials=3',  '--num_train_samples=100', '--num_test_samples=100', '--num_val_samples=100', '--lattice_size=32', '--out=/', '--dir_model_weights=/scratch' ]
+        sys.argv = ['', '--batch_size=50', '--steps=100', '--temp=199', '--num_trials=3',  '--num_train_samples=100', '--num_test_samples=100', '--num_val_samples=100', '--lattice_size=32', '--out=/', '--dir_model_weights=/' ]
     main()

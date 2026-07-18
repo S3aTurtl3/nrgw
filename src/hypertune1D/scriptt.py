@@ -2644,6 +2644,7 @@ def main():
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
     parser.add_argument('--out', help='the directory')
     parser.add_argument('--dir_model_weights')
+    parser.add_argument('--check_overfit_every', type=int, default=100)
 
     args = parser.parse_args()
     LATTICE_SIZE_ISING = args.lattice_size
@@ -2813,7 +2814,8 @@ def main():
                 desc=get_description_of_job(),
                 steps=args.steps,
                 ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
-                directory_model_saving=model_saving_dir
+                directory_model_saving=model_saving_dir,
+                check_for_overfit_every=args.check_overfit_every
             )
             per_trial_loss_msgs.append(loss_msgs)
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)

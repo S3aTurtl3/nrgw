@@ -17,6 +17,7 @@ import os
 import pathlib
 import time
 import hashlib
+import wandb
 
 import imageio
 from collections.abc import Mapping
@@ -2243,7 +2244,23 @@ def train_nnrg(model: WrapperForNNRGSubModule,
                 save_every=1500):
   optim = optax.adamw(lr, weight_decay=weight_decay)
   opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
-
+  wandb.init(
+      project="neural-renormalization-group", # You can change your project name
+      config={
+          "learning_rate": lr,
+          "ke_penalty_coeff_initial": ke_schedule.coeff, # Initial KE coeff
+          "ke_penalty_num_steps_till_0": ke_schedule.num_steps_till_0,
+          "coeff_marginal_regularization": coeff_marginal_regularization,
+          "coeff_main_loss_term": coeff_main_loss_term,
+          "num_time_samples": num_time_samples,
+          "num_time_samples_test": num_time_samples_test,
+          "steps": steps,
+          "weight_decay": weight_decay,
+          "check_for_overfit_every": check_for_overfit_every,
+          "description": desc,
+          "lattice_size": dataloader.array.shape[1] if hasattr(dataloader, 'array') else 'N/A'
+      }
+  )
 
   tracker = OverfitTracker(patience=PATIENCE_NUM_EPOCHS*dataloader.array.shape[0]/dataloader.batch_size/check_for_overfit_every, min_delta=0.01)
 
@@ -2326,11 +2343,21 @@ def train_nnrg(model: WrapperForNNRGSubModule,
           loss_msg = f"Step: {step}, Loss: {value}, KE Penalty: {ke_penalty}, Marg Penalty: {penalty_marginal_distribution}, just NLL: {main_loss}, Val loss: {val_loss}, Computation time: {end - start}"
           print(loss_msg)
           loss_msgs.append(loss_msg)
+          computation_time = end-start
+          wandb.log({
+              "total_loss": float(value),
+              "ke_penalty": float(ke_penalty),
+              "marginal_regularization_penalty": float(penalty_marginal_distribution),
+              "nll_main_loss": float(main_loss),
+              "val_loss": float(val_loss) if val_loss is not None else None,
+              "computation_time_per_step": computation_time
+          }, step=step)
       if (step % save_every) == 0 or step == steps - 1 or step == steps or step == 1:
         nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
       if overfitting and ke_schedule.get_next(step) == 0:
         break
 
+  wandb.finish()
   return best_model, (opt_state, loss_msgs, ke_penalty_of_best_model)
 
 

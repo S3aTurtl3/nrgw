@@ -21,4 +21,8 @@ module load miniforge/24.3.0-0
 
 cd  /home/orealao/orcd/pool/nrgw
 
+# Force offline mode for W&B
+export WANDB_MODE=offline
+
+
 pixi run -e gpu python src/hypertune1D/scriptt.py --batch_size=50 --steps=100 --temp=199 --num_trials=3 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32 --out="/home/orealao/orcd/pool/runstuff" --dir_model_weights="/home/orealao/orcd/scratch"

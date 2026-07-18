@@ -2314,7 +2314,6 @@ def train_nnrg(model: WrapperForNNRGSubModule,
   best_model = None
   best_loss = float('inf')
   loss_msgs = []
-  ke_penalty_of_best_model = float('inf')
   loss_key, key_val = jr.split(loss_key, 2)
   overfitting = False
   while step < steps:
@@ -2338,7 +2337,6 @@ def train_nnrg(model: WrapperForNNRGSubModule,
         if val_loss < best_loss:
             best_loss = val_loss
             best_model = model
-            ke_penalty_of_best_model = ke_penalty
       if (step % print_every) == 0 or step == steps - 1:
           loss_msg = f"Step: {step}, Loss: {value}, KE Penalty: {ke_penalty}, Marg Penalty: {penalty_marginal_distribution}, just NLL: {main_loss}, Val loss: {val_loss}, Computation time: {end - start}"
           print(loss_msg)
@@ -2358,7 +2356,10 @@ def train_nnrg(model: WrapperForNNRGSubModule,
         break
 
   wandb.finish()
-  return best_model, (opt_state, loss_msgs, ke_penalty_of_best_model)
+  if best_model is None:
+      print("Best_model was None")
+      best_model = model
+  return best_model, (opt_state, loss_msgs)
 
 
 # %%
@@ -2827,7 +2828,7 @@ def main():
 
 
     
-            nrg_model, (_, loss_msgs, _) = train_nnrg(
+            nrg_model, (_, loss_msgs) = train_nnrg(
                 nrg_model,
                 dataloader,
                 loss_key,

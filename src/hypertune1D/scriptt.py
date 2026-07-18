@@ -2653,7 +2653,7 @@ def main():
 
     OUTPUT_DIR = args.out
     TEMP_DIR = args.dir_model_weights
-    OUTPUT_FILE_NAME = f"tuning{vars(args)}.json"
+    OUTPUT_FILE_NAME = hashlib.md5(f"tuning{vars(args)}".encode('utf-8')).hexdigest() + ".json"
     model_saving_dir = os.path.join(TEMP_DIR, "models")
     os.makedirs(model_saving_dir, exist_ok=True)
     OUTPUT_FILE_PTH = os.path.join(OUTPUT_DIR, OUTPUT_FILE_NAME)

@@ -2670,8 +2670,8 @@ def main():
     parser.add_argument('--num_val_samples', type=int)
     parser.add_argument('--num_trials', type=int)
     parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
-    parser.add_argument('--out', help='the directory')
-    parser.add_argument('--dir_model_weights')
+    parser.add_argument('--out', help='should be a directory with longterm storage (so not local scratch)')
+    parser.add_argument('--dir_model_weights', help='e.g. local scratch if it is not important to retain model weights')
     parser.add_argument('--check_overfit_every', type=int, default=100)
 
     args = parser.parse_args()

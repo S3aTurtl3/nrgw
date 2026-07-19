@@ -2656,7 +2656,7 @@ class NNRGIsingConfig:
 
 def main():
     parser = argparse.ArgumentParser(description='Train NNRG model.')
-    parser.add_argument('--batch_size', type=int, help='Batch size')
+    parser.add_argument('--batch_size', type=int, required=True,help='Batch size')
     parser.add_argument('--lr_min', type=float, default=0.001, help='min learning rate')
     parser.add_argument('--ke_penalty_coeff_min', type=float, default=1.0, help='min possible value for KE penalty coefficient')
     parser.add_argument('--coeff_marginal_regularization_min', type=float, default=6.0, help='min Coefficient for marginal regularization')
@@ -2665,17 +2665,111 @@ def main():
     parser.add_argument('--num_time_samples_evaluation', type=int, default=40, help='Number of time samples')
     parser.add_argument('--seed', type=int, default=5678, help='Random seed')
     parser.add_argument('--steps', type=int, default=20000)
-    parser.add_argument('--lattice_size', type=int)
-    parser.add_argument('--num_train_samples', type=int)
-    parser.add_argument('--num_test_samples', type=int)
-    parser.add_argument('--num_val_samples', type=int)
-    parser.add_argument('--num_trials', type=int)
-    parser.add_argument('--temp', type=float) # EFF: add burn in as a parameter else tune
-    parser.add_argument('--out', help='should be a directory with longterm storage (so not local scratch)')
-    parser.add_argument('--dir_model_weights', help='e.g. local scratch if it is not important to retain model weights')
+    parser.add_argument('--lattice_size', required=True,type=int)
+    parser.add_argument('--num_train_samples', required=True,type=int)
+    parser.add_argument('--num_test_samples',required=True, type=int)
+    parser.add_argument('--num_val_samples', required=True,type=int)
+    parser.add_argument('--num_trials', required=True,type=int)
+    parser.add_argument('--temp', required=True,type=float) # EFF: add burn in as a parameter else tune
+    parser.add_argument('--out', required=True,help='should be a directory with longterm storage (so not local scratch)')
+    parser.add_argument('--dir_model_weights', required=True, help='e.g. local scratch if it is not important to retain model weights')
     parser.add_argument('--check_overfit_every', type=int, default=100)
+    parser.add_argument(
+    "--kepenaltycoeff-min",
+    type=float,
+    default=1e-3,
+    help="Lower bound for the KE penalty coefficient search",
+)
+    parser.add_argument(
+        "--kepenaltycoeff-max",
+        type=float,
+        default=2.0,
+        help="Upper bound for the KE penalty coefficient search",
+    )
+
+    parser.add_argument(
+        "--coeffmarginalregularization-min",
+        type=int,
+        default=6,
+        help="Lower bound for marginal-regularization coefficient search",
+    )
+    parser.add_argument(
+        "--coeffmarginalregularization-max",
+        type=int,
+        default=10,
+        help="Upper bound for marginal-regularization coefficient search",
+    )
+
+    parser.add_argument(
+        "--coeffmainlossterm-min",
+        type=float,
+        default=0.5,
+        help="Lower bound for main-loss coefficient search",
+    )
+    parser.add_argument(
+        "--coeffmainlossterm-max",
+        type=float,
+        default=2.0,
+        help="Upper bound for main-loss coefficient search",
+    )
+
+    parser.add_argument(
+        "--stepstillzero-min",
+        type=int,
+        default=None,
+        help=(
+            "Lower bound for st0 (KE-schedule zero-duration) in optimizer "
+            "steps. Defaults to three epochs."
+        ),
+    )
+    parser.add_argument(
+        "--stepstillzero-max",
+        type=int,
+        default=None,
+        help=(
+            "Upper bound for st0 (KE-schedule zero-duration) in optimizer "
+            "steps. Defaults to PATIENCE_NUM_EPOCHS / 3 epochs."
+        ),
+    )
 
     args = parser.parse_args()
+
+    def validate_search_bounds(name, lower, upper):
+        if lower > upper:
+            parser.error(
+                f"{name}: lower bound ({lower}) must not exceed "
+                f"upper bound ({upper})"
+            )
+
+    validate_search_bounds( #source chatgp
+        "KE penalty coefficient",
+        args.kepenaltycoeff_min,
+        args.kepenaltycoeff_max,
+    )
+    validate_search_bounds(
+        "Marginal-regularization coefficient",
+        args.coeffmarginalregularization_min,
+        args.coeffmarginalregularization_max,
+    )
+    validate_search_bounds(
+        "Main-loss coefficient",
+        args.coeffmainlossterm_min,
+        args.coeffmainlossterm_max,
+    )
+
+    if args.stepstillzero_min is not None and args.stepstillzero_min < 0:
+        parser.error("--stepstillzero-min must be non-negative")
+
+    if args.stepstillzero_max is not None and args.stepstillzero_max < 0:
+        parser.error("--stepstillzero-max must be non-negative")
+
+    if (
+        args.stepstillzero_min is not None
+        and args.stepstillzero_max is not None
+        and args.stepstillzero_min > args.stepstillzero_max
+    ):
+        parser.error("--stepstillzero-min must not exceed --stepstillzero-max")
+
     LATTICE_SIZE_ISING = args.lattice_size
     # Setup keys
     key = jr.PRNGKey(5678)
@@ -2804,6 +2898,8 @@ def main():
 
     # Configure and experiment with the desired parameters
     STEPS_IN_EPOCH = int(jnp.ceil(dataloader.array.shape[0]/dataloader.batch_size))
+    default_st0_min = 3
+
     client.configure_experiment(parameters=[
         RangeParameterConfig(
             name="penaltyCoeff",

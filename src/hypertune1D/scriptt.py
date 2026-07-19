@@ -1503,7 +1503,18 @@ def sample_discrete_configurations(key, dataset_size, lattice_size, temp, integr
     # Return requested number of samples
     return flattened_configs
 
+def zero_temp_sample_from_continuous_relaxation_1D(key, dataset_size, lattice_size):
+  key_contin, key_discrete = jr.split(key)
+  key_contin = jr.split(key_contin, dataset_size)
+  samples = sample_from_low_temp_ising(key_discrete, dataset_size, lattice_size)
+  K, alpha = get_K_alpha(lattice_size, 0)
+  dataset_continuous = jax.vmap(sample_continuous_from_discrete, (0, 0, None, None, None))(key_contin, samples, K, alpha, lattice_size)
+  return dataset_continuous
+
 def sample_from_continuous_relaxation_1D(key, dataset_size, lattice_size, temp, integrated_time, burn_in, num_chains):
+    if temp == 0:
+        return zero_temp_sample_from_continuous_relaxation_1D(key, dataset_size, lattice_size)
+    
     discrete_key, key_continuous = jr.split(key, 2)
     dataset_discrete = sample_discrete_configurations(discrete_key, dataset_size, lattice_size, temp, integrated_time, burn_in, num_chains)
     keys_continuous = jr.split(key_continuous, dataset_size)

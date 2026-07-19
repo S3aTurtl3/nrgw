@@ -2718,9 +2718,9 @@ def main():
     OLD_BATCH_SIZE = 500
 
 
-    INTEGRATED_TIME = max(get_help_finding_int_time(args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
-    COEFF_FOR_BURN_IN=2
-    BURN_IN = COEFF_FOR_BURN_IN*INTEGRATED_TIME
+    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
+    COEFF_FOR_BURN_IN= None if args.temp == 0 else 2
+    BURN_IN = None if args.temp == 0 else COEFF_FOR_BURN_IN*INTEGRATED_TIME
 
     #TAINTED================
     # Generate a dataset of size 19000

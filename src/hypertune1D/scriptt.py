@@ -2674,101 +2674,18 @@ def main():
     parser.add_argument('--out', required=True,help='should be a directory with longterm storage (so not local scratch)')
     parser.add_argument('--dir_model_weights', required=True, help='e.g. local scratch if it is not important to retain model weights')
     parser.add_argument('--check_overfit_every', type=int, default=100)
-    parser.add_argument(
-    "--kepenaltycoeff-min",
-    type=float,
-    default=1e-3,
-    help="Lower bound for the KE penalty coefficient search",
-)
-    parser.add_argument(
-        "--kepenaltycoeff-max",
-        type=float,
-        default=2.0,
-        help="Upper bound for the KE penalty coefficient search",
-    )
 
-    parser.add_argument(
-        "--coeffmarginalregularization-min",
-        type=int,
-        default=6,
-        help="Lower bound for marginal-regularization coefficient search",
-    )
-    parser.add_argument(
-        "--coeffmarginalregularization-max",
-        type=int,
-        default=10,
-        help="Upper bound for marginal-regularization coefficient search",
-    )
-
-    parser.add_argument(
-        "--coeffmainlossterm-min",
-        type=float,
-        default=0.5,
-        help="Lower bound for main-loss coefficient search",
-    )
-    parser.add_argument(
-        "--coeffmainlossterm-max",
-        type=float,
-        default=2.0,
-        help="Upper bound for main-loss coefficient search",
-    )
-
-    parser.add_argument(
-        "--stepstillzero-min",
-        type=int,
-        default=None,
-        help=(
-            "Lower bound for st0 (KE-schedule zero-duration) in optimizer "
-            "steps. Defaults to three epochs."
-        ),
-    )
-    parser.add_argument(
-        "--stepstillzero-max",
-        type=int,
-        default=None,
-        help=(
-            "Upper bound for st0 (KE-schedule zero-duration) in optimizer "
-            "steps. Defaults to PATIENCE_NUM_EPOCHS / 3 epochs."
-        ),
-    )
+    # Hyperparameter search bounds (excludes learning rate, which remains a fixed choice set)
+    parser.add_argument('--penalty_coeff_min', type=float, default=1e-3, help='Lower bound for KE penalty coefficient search range')
+    parser.add_argument('--penalty_coeff_max', type=float, default=2.0, help='Upper bound for KE penalty coefficient search range')
+    parser.add_argument('--margin_min', type=int, default=6, help='Lower bound for marginal regularization coefficient search range')
+    parser.add_argument('--margin_max', type=int, default=10, help='Upper bound for marginal regularization coefficient search range')
+    parser.add_argument('--main_coeff_min', type=float, default=0.5, help='Lower bound for main loss term coefficient search range')
+    parser.add_argument('--main_coeff_max', type=float, default=2.0, help='Upper bound for main loss term coefficient search range')
+    parser.add_argument('--steps_til_0_min', type=int, default=None, help='Lower bound (in steps) for KE-penalty decay schedule length; defaults to 3 epochs worth of steps if not provided')
+    parser.add_argument('--steps_til_0_max', type=int, default=None, help='Upper bound (in steps) for KE-penalty decay schedule length; defaults to PATIENCE_NUM_EPOCHS/3 epochs worth of steps if not provided')
 
     args = parser.parse_args()
-
-    def validate_search_bounds(name, lower, upper):
-        if lower > upper:
-            parser.error(
-                f"{name}: lower bound ({lower}) must not exceed "
-                f"upper bound ({upper})"
-            )
-
-    validate_search_bounds( #source chatgp
-        "KE penalty coefficient",
-        args.kepenaltycoeff_min,
-        args.kepenaltycoeff_max,
-    )
-    validate_search_bounds(
-        "Marginal-regularization coefficient",
-        args.coeffmarginalregularization_min,
-        args.coeffmarginalregularization_max,
-    )
-    validate_search_bounds(
-        "Main-loss coefficient",
-        args.coeffmainlossterm_min,
-        args.coeffmainlossterm_max,
-    )
-
-    if args.stepstillzero_min is not None and args.stepstillzero_min < 0:
-        parser.error("--stepstillzero-min must be non-negative")
-
-    if args.stepstillzero_max is not None and args.stepstillzero_max < 0:
-        parser.error("--stepstillzero-max must be non-negative")
-
-    if (
-        args.stepstillzero_min is not None
-        and args.stepstillzero_max is not None
-        and args.stepstillzero_min > args.stepstillzero_max
-    ):
-        parser.error("--stepstillzero-min must not exceed --stepstillzero-max")
 
     LATTICE_SIZE_ISING = args.lattice_size
     # Setup keys
@@ -2898,32 +2815,36 @@ def main():
 
     # Configure and experiment with the desired parameters
     STEPS_IN_EPOCH = int(jnp.ceil(dataloader.array.shape[0]/dataloader.batch_size))
-    default_st0_min = 3
+
+    # Bounds for the KE-penalty decay schedule length default to the original
+    # heuristic (3 epochs to PATIENCE_NUM_EPOCHS/3 epochs) unless overridden via CLI.
+    steps_til_0_min = args.steps_til_0_min if args.steps_til_0_min is not None else 3 * STEPS_IN_EPOCH
+    steps_til_0_max = args.steps_til_0_max if args.steps_til_0_max is not None else int(jnp.ceil(PATIENCE_NUM_EPOCHS * STEPS_IN_EPOCH / 3))
 
     client.configure_experiment(parameters=[
         RangeParameterConfig(
             name="penaltyCoeff",
-            bounds=(1e-3, 2),
+            bounds=(args.penalty_coeff_min, args.penalty_coeff_max),
             parameter_type="float",
             scaling="log"
         ),
         RangeParameterConfig(
             name=PARAM_NAME_MARGINAL_REGULARIZATION,
-            bounds=(6, 10),
+            bounds=(args.margin_min, args.margin_max),
             parameter_type="int",
         ),
         RangeParameterConfig(
             name="mainCoeff",
-            bounds=(0.5, 2),
+            bounds=(args.main_coeff_min, args.main_coeff_max),
             parameter_type="float",
             scaling="log"
         ),
         RangeParameterConfig(
         name=PARAM_NAME_STEPS_TIL_0,
-        bounds=(3*STEPS_IN_EPOCH, int(jnp.ceil(PATIENCE_NUM_EPOCHS*STEPS_IN_EPOCH/3))), # from 3 epochs to half
+        bounds=(steps_til_0_min, steps_til_0_max), # from 3 epochs to half (defaults; overridable via CLI)
         parameter_type="int",
     ),
-        
+
         ChoiceParameterConfig(
                 name="learning rate",
                 parameter_type="float",

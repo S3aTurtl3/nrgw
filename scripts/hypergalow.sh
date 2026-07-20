@@ -25,4 +25,4 @@ cd  /home/orealao/orcd/pool/nrgw
 export WANDB_MODE=offline
 
 
-pixi run -e gpu python src/hypertune1D/scriptt.py --batch_size=500 --steps=20000 --temp=10 --num_trials=20 --num_train_samples=19000 --num_test_samples=2500 --num_val_samples=2500 --lattice_size=32 --out="/home/orealao/orcd/pool/runstuff" --dir_model_weights="/home/orealao/orcd/scratch"
+pixi run -e gpu python src/hypertune1D/scriptt.py --batch_size=500 --steps=20000 --temp=0.1 --num_trials=20 --num_train_samples=19000 --num_test_samples=2500 --num_val_samples=2500 --lattice_size=32 --out="/home/orealao/orcd/pool/runstuff" --dir_model_weights="/home/orealao/orcd/scratch"

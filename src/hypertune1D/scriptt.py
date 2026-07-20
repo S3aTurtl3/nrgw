@@ -1399,9 +1399,8 @@ def magnetization(configuration):
 
 from numpyro.diagnostics import effective_sample_size
 
-def get_help_finding_int_time(T, L, kB, J, n=1000, p=0.5):
+def get_help_finding_int_time(key, T, L, kB, J, n=1000, p=0.5):
     seed = 170
-    key= jr.PRNGKey(1)
     key, key_lattice_gen = jr.split(key, 2)
     spinLattice = randomLattice(key_lattice_gen, L, p)
 
@@ -2718,7 +2717,7 @@ def main():
     OLD_BATCH_SIZE = 500
 
 
-    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
+    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(test_key, args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
     COEFF_FOR_BURN_IN= None if args.temp == 0 else 2
     BURN_IN = None if args.temp == 0 else COEFF_FOR_BURN_IN*INTEGRATED_TIME
 

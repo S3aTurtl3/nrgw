@@ -2661,7 +2661,11 @@ class NNRGIsingConfig:
 
 
 
-
+def compute_number_of_latent_vars_being_regularized(lattice_size):
+    total = 0
+    for i in range(jnp.log2(lattice_size)):
+        total += 2**(i+1)*2
+    return total - lattice_size
 
 
 def main():
@@ -2871,7 +2875,7 @@ def main():
 
     client.configure_optimization(
     objective=f"-{NLL_METRIC_NAME}, -{MMD_METRIC_NAME}, -{KE_PENALTY_NAME}",
-    outcome_constraints=[f"{NLL_METRIC_NAME} <= 300", f"{MMD_METRIC_NAME} <= 0.04", f"{KE_PENALTY_NAME} <= 0.2"],
+    outcome_constraints=[f"{NLL_METRIC_NAME} <= 300", f"{MMD_METRIC_NAME} <= {0.04*compute_number_of_latent_vars_being_regularized(args.lattice_size)}", f"{KE_PENALTY_NAME} <= 0.2"],
 )
     
     

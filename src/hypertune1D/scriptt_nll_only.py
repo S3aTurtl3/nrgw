@@ -171,10 +171,9 @@ def train_nnrg_nll_only(
     optim = optax.adamw(lr, weight_decay=weight_decay)
     opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
     wandb.init(
-        project="neural-renormalization-group",
+        project="vanillaneural-renormalization-group",
         config={
             "learning_rate": lr,
-            "coeff_main_loss_term": coeff_main_loss_term,
             "num_time_samples": num_time_samples,
             "num_time_samples_test": num_time_samples_test,
             "steps": steps,
@@ -192,7 +191,7 @@ def train_nnrg_nll_only(
     )
 
     fname = get_nll_only_model_file_name(
-        lr, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc
+        lr, 1, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc
     )
     opt_state_fname = f"nllonly_m{lr}{steps}_test.eqx"
     pth = os.path.join(directory_model_saving, fname)
@@ -208,7 +207,7 @@ def train_nnrg_nll_only(
         )(model, data, key_shots)
 
         main_loss = NLLLoss_2(all_coarse, logpp)
-        total_loss = coeff_main_loss_term * main_loss
+        total_loss = main_loss
         return total_loss, (main_loss,)
 
     @eqx.filter_jit
@@ -264,7 +263,6 @@ def train_nnrg_nll_only(
             wandb.log(
                 {
                     "total_loss": float(value),
-                    "nll_main_loss": float(main_loss),
                     "val_loss": float(val_loss) if val_loss is not None else None,
                     "computation_time_per_step": computation_time,
                 },

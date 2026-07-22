@@ -1132,6 +1132,9 @@ class WrapperForNNRG(eqx.Module):
         nnrg_output = self.nnrg.inference_with_vector_field_snapshots(jnp.reshape(x, (-1, 2)), num_time_samples, key)
         return {COARSE_VAR_NAME: nnrg_output[COARSE_VAR_NAME].flatten(), LOGP_NAME: nnrg_output[LOGP_NAME], VECTOR_FIELD_SNAPSHOT_NAME: {DISENTANGLER_CNF_NAME: nnrg_output[VECTOR_FIELD_SNAPSHOT_NAME][DISENTANGLER_CNF_NAME], DECIMATOR_CNF_NAME: nnrg_output[VECTOR_FIELD_SNAPSHOT_NAME][DECIMATOR_CNF_NAME]}}
 
+    def inference_without_vector_field_snapshots(self, x):
+        nnrg_output = self.nnrg.inference(x)
+        return {COARSE_VAR_NAME: nnrg_output[COARSE_VAR_NAME].flatten(), LOGP_NAME: nnrg_output[LOGP_NAME]}
 
     def generate(self, key:jr.PRNGKey, z):
         """
@@ -1869,15 +1872,7 @@ def NLLLoss(model, data):
     log_likelihood += jax.vmap(normal_log_likelihood)(latent_variables)
     return -jnp.mean(log_likelihood)
 
-# %%
-def nll(inference_info, data, loss_key):
-    model = inference_info.model
-    data = (data-inference_info.mean)/inference_info.std
-    train_key = jr.split(loss_key, data.shape[0])
 
-    latent_variables, log_likelihood = jax.vmap(lambda data, key: model.sample_and_compute_density(data, key=key, is_forward_direction=False))(data, key=train_key)
-    log_likelihood += jax.vmap(normal_log_likelihood)(latent_variables)
-    return float(-jnp.mean(log_likelihood))  # minimise negative log-likelihood
 
 # %%
 def nll_nnrg(model: WrapperForNNRGSubModule, inference_info: InferenceInfo, data: jax.Array, loss_key: jr.PRNGKey):

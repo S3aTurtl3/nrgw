@@ -1,14 +1,13 @@
 #!/bin/bash
-#SBATCH --account=iaifi_lab
-#SBATCH -J vanilla # Job name
-#SBATCH -p iaifi_gpu # Partition(s) (separate with
+#SBATCH -J vanillamini # Job name
+#SBATCH -p mit_normal_gpu # Partition(s) (separate with
 # commas if using multiple)
 #SBATCH --ntasks=1 # Number of cores
 #SBATCH --gpus=1
-#SBATCH -t 0-00:40:00 # Time (D-HH:MM:SS)
+#SBATCH -t 0-00:30:00 # Time (D-HH:MM:SS)
 #SBATCH --mem=15G # Memory
-#SBATCH -o icepy_%j.o # Name of standard output file
-#SBATCH -e icepy_%j.e # Name of standard error file
+#SBATCH -o vanpy_%j.o # Name of standard output file
+#SBATCH -e vanpy_%j.e # Name of standard error file
 #SBATCH --signal=USR1@4
 #SBATCH --signal=USR1@2
 #SBATCH --mail-user=orealao@mit.edu
@@ -18,9 +17,9 @@
 
 # first use version of script with only 2 trials and dataset size 100, ten increase requested time
 # pixi add wandb for final
-module load Miniforge3/26.1.0-fasrc01
+module load miniforge/24.3.0-0
 
-cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
+cd  /home/orealao/orcd/pool/nrgw
 
 # Force offline mode for W&B
 export WANDB_MODE=offline

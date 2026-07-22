@@ -80,6 +80,7 @@ from scriptt import (
     sample_from_continuous_relaxation_1D,
     create_standardized_dataset,
     get_help_finding_int_time,
+    compare_model_vs_validation,
     # misc training utilities
     OverfitTracker,
     InferenceInfo,
@@ -104,16 +105,12 @@ from scriptt import (
 
 def get_nll_only_model_file_identifier(
     lr: float,
-    coeff_main_loss_term: float,
-    num_time_samples,
-    num_time_samples_test,
     steps=10000,
     check_for_overfit_every=100,
     desc="",
 ):
     payload = (
-        f"nllonly_m{lr}{steps}_main{coeff_main_loss_term}"
-        f"_ntime{num_time_samples}_{num_time_samples_test}"
+        f"nllonly_m{lr}{steps}s"
         f"_overfitCheck{check_for_overfit_every}_patience{PATIENCE_NUM_EPOCHS}"
         f"_{desc}test"
     )
@@ -122,9 +119,6 @@ def get_nll_only_model_file_identifier(
 
 def get_nll_only_model_file_name(
     lr: float,
-    coeff_main_loss_term: float,
-    num_time_samples,
-    num_time_samples_test,
     steps=10000,
     check_for_overfit_every=100,
     desc="",
@@ -132,9 +126,6 @@ def get_nll_only_model_file_name(
     return (
         get_nll_only_model_file_identifier(
             lr,
-            coeff_main_loss_term,
-            num_time_samples,
-            num_time_samples_test,
             steps,
             check_for_overfit_every,
             desc,
@@ -174,8 +165,6 @@ def train_nnrg_nll_only(
         project="vanillaneural-renormalization-group",
         config={
             "learning_rate": lr,
-            "num_time_samples": num_time_samples,
-            "num_time_samples_test": num_time_samples_test,
             "steps": steps,
             "weight_decay": weight_decay,
             "check_for_overfit_every": check_for_overfit_every,
@@ -191,7 +180,7 @@ def train_nnrg_nll_only(
     )
 
     fname = get_nll_only_model_file_name(
-        lr, 1, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc
+        lr, steps, check_for_overfit_every, desc
     )
     opt_state_fname = f"nllonly_m{lr}{steps}_test.eqx"
     pth = os.path.join(directory_model_saving, fname)
@@ -292,8 +281,6 @@ def main():
     parser.add_argument("--batch_size", type=int, required=True, help="Batch size")
     parser.add_argument("--lr_min", type=float, default=0.001, help="min learning rate")
     parser.add_argument("--coeff_main_loss_term_min", type=float, default=1.0, help="min Coefficient for main loss term")
-    parser.add_argument("--num_time_samples", type=int, default=40, help="Number of time samples")
-    parser.add_argument("--num_time_samples_evaluation", type=int, default=40, help="Number of time samples")
     parser.add_argument("--seed", type=int, default=5678, help="Random seed")
     parser.add_argument("--steps", type=int, default=20000)
     parser.add_argument("--lattice_size", required=True, type=int)
@@ -316,7 +303,7 @@ def main():
 
     LATTICE_SIZE_ISING = args.lattice_size
     key = jr.PRNGKey(5678)
-    model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
+    model_key, loader_key, loss_key, test_key, evaluation_key, key_vis = jr.split(key, 6)
 
     OUTPUT_DIR = args.out
     TEMP_DIR = args.dir_model_weights
@@ -403,7 +390,7 @@ def main():
 
     LR_PARAM_NAME = "learning rate"
     NLL_METRIC_NAME = "NLL"
-    MMD_METRIC_NAME = "MMD"
+    NUM_SAMPLES_BASIC_EVAL = 1000
 
     def get_description_of_job():
         return "nllonly_" + str(args) + f"lsize{LATTICE_SIZE_ISING}"
@@ -464,6 +451,17 @@ def main():
             return obj
 
     best_parameters, _ = client.get_best_parameterization() if hasattr(client, "get_best_parameterization") else []
+
+    comparison_dataset = test_dataset[:NUM_SAMPLES_BASIC_EVAL] * dataset_std + dataset_mean
+    key_discrete_model, key_discrete_test = jr.split(key_vis)
+    name_of_model = get_nll_only_model_file_name(best_parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_job()) # LEFT OFF
+    nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
+    configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
+    configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
+    fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=20)
+    fname = "OutputVis" + get_nll_only_model_file_identifier(best_parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_job()) + ".pdf"
+    fig.savefig(os.path.join(OUTPUT_FILE_SUBDIR, fname))
+
     with open(OUTPUT_FILE_PTH, "w") as f:
         json.dump(make_json_serializable({"args": vars(args), "best_parameters": str(best_parameters)}), f)
 

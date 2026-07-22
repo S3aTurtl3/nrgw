@@ -29,10 +29,11 @@ def train_plain_nnrg(model: WrapperForNNRGSubModule,
                check_for_overfit_every=100,
                desc="",
                 save_every=1500):
+  """Train a version of our architecture that lacks regularization """
   optim = optax.adamw(lr, weight_decay=weight_decay)
   opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
   wandb.init(
-      project="plain-neural-renormalization-group", # You can change your project name
+      project="plain-neural-renormalization-group", 
       config={
           "learning_rate": lr,
           "steps": steps,
@@ -46,7 +47,6 @@ def train_plain_nnrg(model: WrapperForNNRGSubModule,
   tracker = OverfitTracker(patience=PATIENCE_NUM_EPOCHS*dataloader.array.shape[0]/dataloader.batch_size/check_for_overfit_every, min_delta=0.01)
 
   fname = get_plain_model_filename(lr, steps, check_for_overfit_every, desc)
-  opt_state_fname = f"m{lr}{steps}_test.eqx"
   pth = os.path.join(directory_model_saving,fname)
 
 
@@ -116,7 +116,7 @@ def train_plain_nnrg(model: WrapperForNNRGSubModule,
               "val_loss": float(val_loss) if val_loss is not None else None,
               "computation_time_per_step": computation_time
           }, step=step)
-      if (step % save_every) == 0 or step == steps - 1 or step == steps or step == 1:
+      if (step % save_every) == 0 or step == steps - 1 or step == 1:
         nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
       if overfitting:
         break
@@ -154,7 +154,7 @@ def main():
 
     OUTPUT_DIR = args.out
     TEMP_DIR = args.dir_model_weights
-    OUTPUT_FILE_NAME = hashlib.md5(f"tuningPlain{vars(args)}".encode('utf-8')).hexdigest() + ".json"
+    OUTPUT_FILE_NAME = "tuningPlain"+ hashlib.md5(f"tuningPlain{vars(args)}".encode('utf-8')).hexdigest() + ".json"
     temp_tag = f"{args.lattice_size}T{args.temp:g}".replace(".", "p")
     model_saving_dir = os.path.join(TEMP_DIR, "models", temp_tag)
     os.makedirs(model_saving_dir, exist_ok=True)
@@ -290,13 +290,15 @@ def main():
 
     best_parameters, _ = client.get_best_parameterization() if hasattr(client, "get_best_parameterization") else []
 
-    comparison_dataset = test_dataset[:NUM_SAMPLES_BASIC_EVAL] * dataset_std + dataset_mean
     key_discrete_model, key_discrete_test = jr.split(key_vis)
+    comparison_dataset = test_dataset[:NUM_SAMPLES_BASIC_EVAL] * dataset_std + dataset_mean
+    configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
+    
     name_of_model = get_plain_model_filename(best_parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) # LEFT OFF
     nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
     configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
-    configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
-    fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=20)
+    
+    fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=10)
     fname = "OutputVis" + get_plain_model_identifier(best_parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) + ".pdf"
     fig.savefig(os.path.join(OUTPUT_FILE_SUBDIR, fname))
 

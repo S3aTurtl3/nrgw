@@ -2356,7 +2356,7 @@ def train_nnrg(model: WrapperForNNRGSubModule,
               "val_loss": float(val_loss) if val_loss is not None else None,
               "computation_time_per_step": computation_time
           }, step=step)
-      if (step % save_every) == 0 or step == steps - 1 or step == steps or step == 1:
+      if (step % save_every) == 0 or step == steps - 1 or step == 1:
         nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
       if overfitting and ke_schedule.get_next(step) == 0:
         break

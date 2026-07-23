@@ -4,7 +4,7 @@
 # commas if using multiple)
 #SBATCH --ntasks=1 # Number of cores
 #SBATCH --gpus=1
-#SBATCH -t 0-03:00:00 # Time (D-HH:MM:SS)
+#SBATCH -t 0-06:00:00 # Time (D-HH:MM:SS)
 #SBATCH --mem=80G # Memory
 #SBATCH -o icepy_%j.o # Name of standard output file
 #SBATCH -e icepy_%j.e # Name of standard error file

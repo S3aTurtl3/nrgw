@@ -2656,9 +2656,9 @@ class NNRGIsingConfig:
 
 
 
-def compute_number_of_latent_vars_being_regularized(lattice_size):
+def compute_number_of_latent_vars_being_regularized(lattice_size): # assumes lattice_size is a power of 2
     total = 0
-    for i in range(jnp.log2(lattice_size)):
+    for i in range(int(jnp.log2(lattice_size))):
         total += 2**(i+1)*2
     return total - lattice_size
 

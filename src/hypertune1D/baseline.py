@@ -13,8 +13,8 @@ def get_plain_model_filename(lr,
    return get_plain_model_identifier(lr, steps, check_for_overfit_every, desc) + ".eqx"
 
 def nll(model, data):
-   all_coarse_val, logpp_val = jax.vmap(lambda ex: model.inference_without_vector_field_snapshots(ex))(data)
-   return NLLLoss_2(all_coarse_val, logpp_val)
+   model_output = jax.vmap(lambda ex: model.inference_without_vector_field_snapshots(ex))(data)
+   return NLLLoss_2(model_output[COARSE_VAR_NAME], model_output[LOGP_NAME])
 
 
 def train_plain_nnrg(model: WrapperForNNRGSubModule,
@@ -54,17 +54,17 @@ def train_plain_nnrg(model: WrapperForNNRGSubModule,
   @eqx.filter_value_and_grad(has_aux=False)
   def loss(model, data, loss_key):
 
-    all_coarse, logpp = jax.vmap(lambda data: model.inference_without_vector_field_snapshots(data))(data)
+    model_output = jax.vmap(lambda data: model.inference_without_vector_field_snapshots(data))(data)
 
 
-    main_loss = NLLLoss_2(all_coarse, logpp)
+    main_loss = NLLLoss_2(model_output[COARSE_VAR_NAME], model_output[LOGP_NAME])
     total_loss = main_loss
     return total_loss
 
   @eqx.filter_jit
   def validation_loss(model, loss_key):
-    all_coarse_val, logpp_val = jax.vmap(lambda ex: model.inference_without_vector_field_snapshots(ex))(dataset_test)
-    val_loss = NLLLoss_2(all_coarse_val, logpp_val)
+    model_output = jax.vmap(lambda ex: model.inference_without_vector_field_snapshots(ex))(dataset_test)
+    val_loss = NLLLoss_2(model_output[COARSE_VAR_NAME], model_output[LOGP_NAME])
     return val_loss
 
 

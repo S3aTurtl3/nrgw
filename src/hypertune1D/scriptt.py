@@ -2808,9 +2808,10 @@ def main():
                         num_time_samples = args.num_time_samples,
                         num_time_samples_test=args.num_time_samples_evaluation,
                         )
+            pth=os.path.join(model_saving_dir, name_of_model)
             if os.path.getsize(pth) <= 0:
                 warnings.warn(f"{pth} is empty")
-            nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
+            nrg_model = load_model(pth, WrapperForNNRG)
             configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)

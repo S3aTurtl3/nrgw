@@ -116,10 +116,11 @@ def train_plain_nnrg(model: WrapperForNNRGSubModule,
               "val_loss": float(val_loss) if val_loss is not None else None,
               "computation_time_per_step": computation_time
           }, step=step)
-      if (step % save_every) == 0 or step == steps - 1 or step == 1:
-        nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
-      if overfitting:
-        break
+      if overfitting or ( (step % save_every) == 0 or step == steps - 1 or step == 1):
+        if best_model is not None:
+            nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
+        if overfitting:
+            break
 
   wandb.finish()
   if best_model is None:

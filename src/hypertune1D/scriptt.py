@@ -2737,7 +2737,7 @@ def main():
     # If that cache file already exists, load the datasets from it instead of
     # regenerating them.
 
-    DATA_CACHE_FILE_NAME = "dataset_cache_" + hashlib.md5(
+    DATA_CACHE_FILE_NAME = "dataset_cache_file" + hashlib.md5(
         f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{seed}_n{args.n}".encode('utf-8')
     ).hexdigest() + ".npz"
     DATA_CACHE_PATH = os.path.join(OUTPUT_DIR, DATA_CACHE_FILE_NAME)

@@ -145,7 +145,7 @@ def main():
     parser.add_argument('--out', required=True,help='should be a directory with longterm storage (so not local scratch)')
     parser.add_argument('--dir_model_weights', required=True, help='e.g. local scratch if it is not important to retain model weights')
     parser.add_argument('--check_overfit_every', type=int, default=100)
-
+    parser.add_argument('--n', type=int, default=1000)
     
     args = parser.parse_args()
 
@@ -170,7 +170,7 @@ def main():
     OLD_BATCH_SIZE = 500
 
 
-    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(test_key, args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
+    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(test_key, args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=args.n), LATTICE_SIZE_ISING)
     COEFF_FOR_BURN_IN= None if args.temp == 0 else 2
     BURN_IN = None if args.temp == 0 else COEFF_FOR_BURN_IN*INTEGRATED_TIME
 

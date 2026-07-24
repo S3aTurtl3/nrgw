@@ -2700,7 +2700,8 @@ def main():
 
     LATTICE_SIZE_ISING = args.lattice_size
     # Setup keys
-    key = jr.PRNGKey(5678)
+    seed = 5678
+    key = jr.PRNGKey(seed)
     model_key, loader_key, loss_key, test_key, evaluation_key, key_validation = jr.split(key, 6)
 
     OUTPUT_DIR = args.out
@@ -2736,7 +2737,7 @@ def main():
     # regenerating them.
 
     DATA_CACHE_FILE_NAME = "dataset_cache_" + hashlib.md5(
-        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{args.seed}".encode('utf-8')
+        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{seed}".encode('utf-8')
     ).hexdigest() + ".npz"
     DATA_CACHE_PATH = os.path.join(OUTPUT_DIR, DATA_CACHE_FILE_NAME)
 
@@ -2814,7 +2815,7 @@ def main():
             nrg_model = load_model(pth, WrapperForNNRG)
             configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
-            fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=40)
+            fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=10)
             fname = "OutputVis" + get_model_file_identifier(lr= parameters[LR_PARAM_NAME],
                         ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
                         coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],

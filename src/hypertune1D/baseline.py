@@ -151,7 +151,8 @@ def main():
 
     LATTICE_SIZE_ISING = args.lattice_size
     # Setup keys
-    key = jr.PRNGKey(5678)
+    seed = 5678
+    key = jr.PRNGKey(seed)
     model_key, loader_key, loss_key, test_key, evaluation_key, key_vis = jr.split(key, 6)
 
     OUTPUT_DIR = args.out
@@ -187,7 +188,7 @@ def main():
     # regenerating them.
 
     DATA_CACHE_FILE_NAME = "dataset_cache_" + hashlib.md5(
-        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{args.seed}".encode('utf-8')
+        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{seed}".encode('utf-8')
     ).hexdigest() + ".npz"
     DATA_CACHE_PATH = os.path.join(OUTPUT_DIR, DATA_CACHE_FILE_NAME)
 

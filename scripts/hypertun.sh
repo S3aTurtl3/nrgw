@@ -26,4 +26,4 @@ cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 export WANDB_MODE=offline
 
 
-pixi run -e gpu python src/hypertune1D/scriptt.py --temp=10 --batch_size=500 --steps=20000  --num_trials=20 --num_train_samples=19000 --num_test_samples=1900 --num_val_samples=1900 --lattice_size=32 --out="/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff" --dir_model_weights="/n/netscratch/iaifi_lab/Lab/oalao"
+pixi run -e gpu python src/hypertune1D/scriptt.py --temp=10 --batch_size=500 --steps=20000  --num_trials=5 --num_train_samples=19000 --num_test_samples=1900 --num_val_samples=1900 --lattice_size=32 --out="/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff" --dir_model_weights="/n/netscratch/iaifi_lab/Lab/oalao"

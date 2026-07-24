@@ -243,12 +243,12 @@ def main():
             # visualize model samples compared to test dataset
             key_current_parameterization = key_frontier_visualizations[i]
             key_discrete_model, key_discrete_test = jr.split(key_current_parameterization)
-            name_of_model = get_plain_model_filename(best_parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) # LEFT OFF
+            name_of_model = get_plain_model_filename(parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) # LEFT OFF
             nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
             configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=10)
-            fname = "OutputVis" + get_plain_model_identifier(best_parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) + ".pdf"
+            fname = "OutputVis" + get_plain_model_identifier(parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) + ".pdf"
             fig.savefig(os.path.join(OUTPUT_FILE_SUBDIR, fname))
 
   
@@ -306,7 +306,7 @@ def main():
             client.complete_trial(trial_index=trial_index, raw_data=raw_data)
 
     frontier = client.get_pareto_frontier()
-    make_and_save_visualizations_of_best_models_plain(frontier, evaluation_key)
+    make_and_save_visualizations_of_best_models_plain(frontier, evaluation_key, test_dataset)
     with open(OUTPUT_FILE_PTH, "w") as file:
       json.dump({"frontier": make_json_serializable(frontier), "loss_msgs": per_trial_loss_msgs}, file)
 

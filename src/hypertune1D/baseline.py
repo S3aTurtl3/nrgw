@@ -1,4 +1,5 @@
 from scriptt import *
+import warnings
 
 def get_plain_model_identifier(lr,
                         steps,
@@ -96,7 +97,7 @@ def train_plain_nnrg(model: WrapperForNNRGSubModule,
       )
 
       end = time.time()
-      if (step % check_for_overfit_every == 0) or steps == steps-1:
+      if (step % check_for_overfit_every == 0) or step == steps-1:
         val_loss = validation_loss(model, key_val)
         key_val = jr.fold_in(key_val, step)
         tracker_verdict = tracker.update(val_loss)
@@ -245,7 +246,10 @@ def main():
             key_current_parameterization = key_frontier_visualizations[i]
             key_discrete_model, key_discrete_test = jr.split(key_current_parameterization)
             name_of_model = get_plain_model_filename(parameters[LR_PARAM_NAME], args.steps, args.check_overfit_every, get_description_of_plain_job()) # LEFT OFF
-            nrg_model = load_model(os.path.join(model_saving_dir, name_of_model), WrapperForNNRG)
+            pth=os.path.join(model_saving_dir, name_of_model)
+            if os.path.getsize(pth) <= 0:
+                warnings.warn(f"{pth} is empty")
+            nrg_model = load_model(pth, WrapperForNNRG)
             configs_sampled_from_model = get_discrete_samples_from_model(nrg_model, dataset_mean, dataset_std, key_discrete_model, LATTICE_SIZE_ISING, NUM_SAMPLES_BASIC_EVAL)
             configs_from_test_dataset = get_discrete_samples(comparison_dataset, key_discrete_test)
             fig, stats = compare_model_vs_validation(configs_sampled_from_model, configs_from_test_dataset, n_show=10)

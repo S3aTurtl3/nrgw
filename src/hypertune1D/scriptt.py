@@ -2333,7 +2333,7 @@ def train_nnrg(model: WrapperForNNRGSubModule,
       )
 
       end = time.time()
-      if (step % check_for_overfit_every == 0) or steps == steps-1:
+      if (step % check_for_overfit_every == 0) or step == steps-1:
         val_loss = validation_loss(model, key_val)
         key_val = jr.fold_in(key_val, step)
         tracker_verdict = tracker.update(val_loss)
@@ -2356,11 +2356,11 @@ def train_nnrg(model: WrapperForNNRGSubModule,
               "val_loss": float(val_loss) if val_loss is not None else None,
               "computation_time_per_step": computation_time
           }, step=step)
-      if (step % save_every) == 0 or step == steps - 1 or step == 1:
+      if overfitting or ((step % save_every) == 0 or step == steps - 1 or step == 1):
         if best_model is not None:
             nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
-      if overfitting and ke_schedule.get_next(step) == 0:
-        break
+        if overfitting and ke_schedule.get_next(step) == 0:
+            break
 
   wandb.finish()
   if best_model is None:

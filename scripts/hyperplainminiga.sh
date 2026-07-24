@@ -4,7 +4,7 @@
 # commas if using multiple)
 #SBATCH --ntasks=1 # Number of cores
 #SBATCH --gpus=1
-#SBATCH -t 0-00:30:00 # Time (D-HH:MM:SS)
+#SBATCH -t 0-00:20:00 # Time (D-HH:MM:SS)
 #SBATCH --mem=15G # Memory
 #SBATCH -o vanpy_%j.o # Name of standard output file
 #SBATCH -e vanpy_%j.e # Name of standard error file

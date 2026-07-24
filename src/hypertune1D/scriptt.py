@@ -2695,6 +2695,7 @@ def main():
     parser.add_argument('--main_coeff_max', type=float, default=2.0, help='Upper bound for main loss term coefficient search range')
     parser.add_argument('--steps_til_0_min', type=int, default=None, help='Lower bound (in steps) for KE-penalty decay schedule length; defaults to 3 epochs worth of steps if not provided')
     parser.add_argument('--steps_til_0_max', type=int, default=None, help='Upper bound (in steps) for KE-penalty decay schedule length; defaults to PATIENCE_NUM_EPOCHS/3 epochs worth of steps if not provided')
+    parser.add_argument('--n', type=int, default=1000)
 
     args = parser.parse_args()
 
@@ -2719,7 +2720,7 @@ def main():
     OLD_BATCH_SIZE = 500
 
 
-    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(test_key, args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=100), LATTICE_SIZE_ISING)
+    INTEGRATED_TIME = None if args.temp == 0 else max(get_help_finding_int_time(test_key, args.temp, LATTICE_SIZE_ISING, 1.0, 1.0, n=args.n), LATTICE_SIZE_ISING)
     COEFF_FOR_BURN_IN= None if args.temp == 0 else 2
     BURN_IN = None if args.temp == 0 else COEFF_FOR_BURN_IN*INTEGRATED_TIME
 
@@ -2737,7 +2738,7 @@ def main():
     # regenerating them.
 
     DATA_CACHE_FILE_NAME = "dataset_cache_" + hashlib.md5(
-        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{seed}".encode('utf-8')
+        f"data{LATTICE_SIZE_ISING}_{args.temp}_{NUM_TRAIN_SAMPLES}_{NUM_SAMPLES_TEST}_{NUM_SAMPLES_VALIDATION}_{seed}_n{args.n}".encode('utf-8')
     ).hexdigest() + ".npz"
     DATA_CACHE_PATH = os.path.join(OUTPUT_DIR, DATA_CACHE_FILE_NAME)
 

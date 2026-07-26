@@ -2835,34 +2835,59 @@ def main():
         per_trial_loss_msgs = []
         for trial_index, parameters in trials.items():
 
-            # Model initialization
-            nrg_model = WrapperForNNRG(depth=int(jnp.ceil(jnp.log2(LATTICE_SIZE_ISING))), key=model_key)
+
+            name_of_model = get_model_file_name(
+                        lr= parameters[LR_PARAM_NAME],
+                        ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
+                        coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
+                        coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
+                        steps=args.steps,
+                        desc=get_description_of_job(),
+                        num_time_samples = args.num_time_samples,
+                        num_time_samples_test=args.num_time_samples_evaluation,
+                        )
+            modelPath =os.path.join(model_saving_dir, name_of_model)
+            if not os.path.exists(modelPath):
+                # Model initialization
+                nrg_model = WrapperForNNRG(depth=int(jnp.ceil(jnp.log2(LATTICE_SIZE_ISING))), key=model_key)
 
 
-    
-            nrg_model, (_, loss_msgs) = train_nnrg(
-                nrg_model,
-                dataloader,
-                loss_key,
-                lr=parameters[LR_PARAM_NAME],
-                ke_penalty_coeff=parameters[PENALTY_COEFF_NAME],
-                coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
-                coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
-                num_time_samples=args.num_time_samples,
-                dataset_test = validation_dataset,
-                num_time_samples_test= args.num_time_samples_evaluation,
-                desc=get_description_of_job(),
-                steps=args.steps,
-                ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
-                directory_model_saving=model_saving_dir,
-                check_for_overfit_every=args.check_overfit_every
-            )
-            per_trial_loss_msgs.append(loss_msgs)
+        
+                nrg_model, (_, loss_msgs) = train_nnrg(
+                    nrg_model,
+                    dataloader,
+                    loss_key,
+                    lr=parameters[LR_PARAM_NAME],
+                    ke_penalty_coeff=parameters[PENALTY_COEFF_NAME],
+                    coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
+                    coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
+                    num_time_samples=args.num_time_samples,
+                    dataset_test = validation_dataset,
+                    num_time_samples_test= args.num_time_samples_evaluation,
+                    desc=get_description_of_job(),
+                    steps=args.steps,
+                    ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
+                    directory_model_saving=model_saving_dir,
+                    check_for_overfit_every=args.check_overfit_every
+                )
+                per_trial_loss_msgs.append(loss_msgs)
+            else:
+                nrg_model = load_model(modelPath, WrapperForNNRG)
+                per_trial_loss_msgs.append(["LOADEDFROMPREEXISTING"])
             inference_info = ModelInferenceInfo(nrg_model, PLACEHOLDER_ISING_MEAN, PLACEHOLDER_ISING_STD)
             sample_quality = evaluate_sample_quality_nnrg(inference_info, test_dataset, key_sample_quality, LATTICE_SIZE_ISING)
             penalties = penalties_on_test_data(nrg_model, test_dataset, key_ot_penalty, args.num_time_samples_evaluation)
             raw_data = {NLL_METRIC_NAME: float(penalties["nll"]), MMD_METRIC_NAME: float(sample_quality), KE_PENALTY_NAME: float(penalties["ke"])}
-
+            metric_path = os.path.join(OUTPUT_FILE_SUBDIR, get_model_file_identifier(lr= parameters[LR_PARAM_NAME],
+                        ke_schedule=KESchedule(parameters[PENALTY_COEFF_NAME], parameters[PARAM_NAME_STEPS_TIL_0]),
+                        coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
+                        coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
+                        steps=args.steps,
+                        desc=get_description_of_job(),
+                        num_time_samples = args.num_time_samples,
+                        num_time_samples_test=args.num_time_samples_evaluation,) + "__" + "metrics.json")
+            with open(metric_path, "w") as file:
+                json.dump({"pars": make_json_serializable(parameters), "metrics": raw_data}, file)
             client.complete_trial(trial_index=trial_index, raw_data=raw_data)
 
     frontier = client.get_pareto_frontier()

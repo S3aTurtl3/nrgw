@@ -1204,7 +1204,6 @@ class DataLoader(eqx.Module): #--- generic data loader where data points come in
         return self.array[batch_indices]
 
 
-
 class StreamingDataLoader:
     get_batch: Callable[[jr.PRNGKey,int], jax.Array]
     """a function with input arguments (key: jr.PRNGKey, batch_size: int) that returns a jax array"""
@@ -1223,6 +1222,7 @@ class StreamingDataLoader:
 
 
 
+
 CHECKERBOARD_DATASET_MEAN = jnp.array([0, 0])
 CHECKERBOARD_DATASET_STD = jnp.array([4/jnp.sqrt(3)]*2)
 
@@ -1233,6 +1233,7 @@ def sample_from_checkerboard(key, dataset_size):
     x2 = x2_ + (jnp.floor(x1) % 2)
     y = jnp.concatenate([x1[:, None], x2[:, None]], 1) * 2
     return y
+
 
 def create_standardized_dataset(dataset):
     mean = jnp.mean(dataset, axis=0)
@@ -1264,6 +1265,7 @@ def sample_from_checkervector_dataset(key, dataset_size):
     checkerboard_samples = jax.vmap(lambda key, dataset_size: sample_from_checkerboard(key, dataset_size), in_axes=(0, None))(key, dataset_size)
     dataset = jnp.concatenate(checkerboard_samples, axis=1)
     return jnp.roll(dataset, 1, axis=1)
+
 
 def sample_from_checkervector_dataset_standardized(key, dataset_size):
     """Performs the same operation as `sample_from_checkervector_dataset` except the datapoints have been standardized"""
@@ -1382,15 +1384,21 @@ def energy( s, coupling) :
     return jnp.sum( E ) / s.size
 
 #Simple sum over spin of all particles
-def magnetization( s ) :
+
+
+def magnetization_per_spin( s ) :
     '''Returns the magnetization per spin of the configuration `s`, assuming that the configuration is from a
     1D Ising model with periodic boundary conditions and that is subject to no external magnetic field'''
     return jnp.sum( s ) / s.size
 
 #Creates an LxL lattice of random integer spins with probability (p) to be +1 (and 1-p to be -1)
+
+
 def randomLattice(key, L, p ) :
 
     return ( jr.uniform(key, L ) < p ) * 2 - 1
+
+
 def magnetization(configuration):
     '''Returns the microscopic-state magnetization of the 1D Ising model `configuration` (assuming that it is not subject to
     an external magnetic field) which is defined as the sum of the configuraton's spins'''
@@ -1402,6 +1410,7 @@ def magnetization(configuration):
 
 
 from numpyro.diagnostics import effective_sample_size
+
 
 def get_help_finding_int_time(key, T, L, kB, J, n=1000, p=0.5):
     seed = 170
@@ -1440,7 +1449,6 @@ def get_help_finding_int_time(key, T, L, kB, J, n=1000, p=0.5):
     return int(math.ceil(float(numpyro_integrated_time)))
 
 
-
 def get_1D_ising_configs_from_metropolis(key, n, T, L, J, kB):
     p = 0.5#:)                             # probability for the initial random lattice
     configs = []
@@ -1457,6 +1465,7 @@ def get_1D_ising_configs_from_metropolis(key, n, T, L, J, kB):
 
     return configs
 
+
 def get_1D_ising_samples_discrete_from_metropolis_output(metropolis_output, integrated_time, burn_in):
     return metropolis_output[burn_in::integrated_time]
 
@@ -1467,8 +1476,10 @@ def sample_continuous_from_discrete(key, discrete: jax.Array, K, alpha, lattice_
     cov = (K + alpha*jnp.eye(lattice_size))
     return jr.multivariate_normal(key, (K + alpha*jnp.eye(lattice_size))@discrete, cov)
 
+
 def sample_continuous_dataset_from_discrete(key, discrete_dataset):
     pass
+
 
 def sample_discrete_configurations(key, dataset_size, lattice_size, temp, integrated_time, burn_in, num_chains):
     """
@@ -1513,6 +1524,7 @@ def zero_temp_sample_from_continuous_relaxation_1D(key, dataset_size, lattice_si
   K, alpha = get_K_alpha(lattice_size, 0)
   dataset_continuous = jax.vmap(sample_continuous_from_discrete, (0, 0, None, None, None))(key_contin, samples, K, alpha, lattice_size)
   return dataset_continuous
+
 
 def sample_from_continuous_relaxation_1D(key, dataset_size, lattice_size, temp, integrated_time, burn_in, num_chains):
     if temp == 0:
@@ -1561,75 +1573,8 @@ def magnetization(configuration):
     return jnp.sum( configuration )
 
 # i need an ensemble of samplers
-RECOMMENDED_R_HAT_THRESHOLD = 1.1
+
 kB = 1.0         # the Boltzman constant
-class IsingModel:
-
-    WARM_UP = 1000 # TODO: Watch out for equilibriation period
-    """length of the warm-up period"""
-    CONVERGENCE_CHECK_PERIOD_LENGTH = 1000
-    """number of samples to used in determining if equilibration has been reached i.e. length of the
-    chain used to compute R-hat (note: the chain used to compute R-hat does not include samples that were generated
-    during the warm-up perio)"""
-    CALIBRATION_PERIOD = 1000
-    """number of mcmc steps used to determine the integrated time, after the warm-up period"""
-    NUM_CHAINS = 4
-    """number of mcmc chains used in computing the integrated time"""
-    L: int
-    J: float
-    beta: float
-    integrated_time: int
-    """integrated time for the ising model """
-
-
-    def __init__(self, key:jr.PRNGKey, L: int, T: float, J: float):
-        """
-
-        T:
-            temperature
-        J:
-            coupling parameter"""
-        self.kernel = DiscreteHMCGibbs(NUTS(ising_model))
-        mcmc = MCMC(self.kernel, num_warmup=self.WARM_UP, num_samples=self.CONVERGENCE_CHECK_PERIOD_LENGTH, num_chains=self.NUM_CHAINS)
-        # Assert convergence
-        self.L = L
-        self.J = J
-        self.beta = 1/(kB*T)
-        samples = self._sample_ising(key, mcmc)
-        magnetization_samples = jax.vmap(jax.vmap(magnetization))(samples)
-        self.n_eff = effective_sample_size(magnetization_samples)
-        self.integrated_time = int(jnp.ceil(self.CONVERGENCE_CHECK_PERIOD_LENGTH/self.n_eff))
-        # DOUBlE CHECK SAMPLE SHAPE
-        print(self.integrated_time)
-        plt.plot(autocorrelation(magnetization_samples[0]))
-        plt.show()
-        #
-
-    def _sample_ising(self, key:jr.PRNGKey, mcmc: MCMC):
-        """Returns samples of the icing model produced by running `mcmc"""
-        mcmc.run(key, self.L, self.J, self.beta)
-        return 2*mcmc.get_samples(True)["spins"] -1
-
-    def get_1D_ising_configurations(self, key, dataset_size):
-        """Returns an array of shape (`dataset_size`, `self.L) containing independent samples from the 1D Ising model with lattice size `self.L`,
-        temperature `self.T`, and coupling parameter `self.J"""
-        mcmc = MCMC(self.kernel, num_warmup=self.WARM_UP, num_samples=int(jnp.ceil(self.CONVERGENCE_CHECK_PERIOD_LENGTH/self.n_eff)*dataset_size))
-        samples =self._sample_ising(key, mcmc)[0]
-        samples = samples[::self.integrated_time]
-        # TODO: filter
-        return samples
-
-    def get_configurations_with_continuous_relaxation(self, key, dataset_size):
-        """Returns a set of 1D ising configurations where up-spins are represented as samples from abs(standard_gaussian) + 1 and where down-spins
-        are represented as sampels from -abs(standard_gaussian) - 1"""
-        mapping_key, sample_key = jr.split(key, 2)
-        samples = self.get_1D_ising_configurations(sample_key, dataset_size)
-        return jr.uniform(mapping_key, (dataset_size, self.L)) * samples + 0.5*samples
-
-    # we may find out continuous isisng is beter and have to learn numpyro anyway.
-    # is
-
-
 
 
 
@@ -1999,6 +1944,7 @@ def get_discrete_samples(continuous_samples, key):
   key_discrete = jr.split(key, continuous_samples.shape[0])
   discrete_samples = jax.vmap(lambda sample, key: sample_s_given_x(key, sample))(continuous_samples, key_discrete)
   return discrete_samples
+
 
 
 # %% [code]
@@ -2920,7 +2866,7 @@ def main():
             client.complete_trial(trial_index=trial_index, raw_data=raw_data)
 
     frontier = client.get_pareto_frontier()
-    make_and_save_visualizations_of_best_models(frontier, evaluation_key)
+    make_and_save_visualizations_of_best_models(frontier, evaluation_key, test_dataset)
     with open(OUTPUT_FILE_PTH, "w") as file:
       json.dump({"frontier": make_json_serializable(frontier), "loss_msgs": per_trial_loss_msgs}, file)
 

@@ -5,8 +5,8 @@
 # commas if using multiple)
 #SBATCH --ntasks=1 # Number of cores
 #SBATCH --gpus=1
-#SBATCH -t 0-00:30:00 # Time (D-HH:MM:SS)
-#SBATCH --mem=15G # Memory
+#SBATCH -t 0-02:00:00 # Time (D-HH:MM:SS)
+#SBATCH --mem=60G # Memory
 #SBATCH -o icepy_%j.o # Name of standard output file
 #SBATCH -e icepy_%j.e # Name of standard error file
 #SBATCH --signal=USR1@4
@@ -26,4 +26,4 @@ cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 export WANDB_MODE=offline
 
 
-pixi run -e gpu python src/hypertune1D/baseline.py --temp=100 --batch_size=50 --steps=100  --num_trials=2 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32 --out="/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff" --dir_model_weights="/scratch"
+pixi run -e gpu python src/hypertune1D/train_baseline.py --temp=100 --batch_size=500 --steps=20000  --num_trials=2 --num_train_samples=19000 --num_test_samples=1900 --num_val_samples=1900 --lattice_size=32 --out="/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff" --dir_model_weights="/scratch"

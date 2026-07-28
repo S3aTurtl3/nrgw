@@ -1214,6 +1214,7 @@ class StreamingDataLoader:
         self.get_batch = get_batch
         self.batch_size = batch_size
         self.key = key
+    
 
     def __call__(self, step):
         key = jr.fold_in(self.key, step)
@@ -2013,7 +2014,7 @@ def visualize_spin_batch(spins, ncols=None, cell_size=1.2, cmap="Greys"):
     return fig, axes
 
 # %% [code]
-def compare_model_vs_validation(
+def compare_model_vs_validation( # TODO: when moving to 2d, change way per-spin magnetization is computed
     model_samples,
     val_samples,
     ncols=None,
@@ -2052,7 +2053,7 @@ def compare_model_vs_validation(
         )
 
     def _stats(spins):
-        magnetization = jnp.sum(spins, axis=1)  # per-sample magnetization
+        magnetization = jnp.sum(spins, axis=1)/spins.shape[1]  # per-sample magnetization
         nn_corr = jnp.mean(spins[:, :-1] * spins[:, 1:])  # <s_i s_{i+1}>, averaged
         return {
             "mean_magnetization": float(jnp.mean(magnetization)),

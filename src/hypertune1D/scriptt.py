@@ -709,6 +709,7 @@ class IdentityCNF(eqx.Module):
         return data, jnp.zeros(data.shape[0])
 
 COARSE_VAR_NAME = "coarse"
+NON_FINAL_LATENTS_NAME = "nf"
 DECIMATOR_INPUT_NAME = "decin"
 DISENTANGLER_INPUT_NAME = "disin"
 LOGP_NAME = "l"
@@ -970,6 +971,8 @@ class NNRG(eqx.Module):
 
     #tainted
     def inference_with_vector_field_snapshots(self, x, num_time_samples, key):
+      """returns a dictionary output_dict where output_dict[NON_FINAL_LATENTS_NAME] stores a matrix containing the output of every block
+         in the NeuralRG except for blocks that output physical variables; each row in this matrix is the output of a single block in the NeuralRG"""
       num_layers = len(self.submodules)
 
       total_delta_log_likelihood = 0.0
@@ -982,6 +985,7 @@ class NNRG(eqx.Module):
       per_submodule_decimator_inputs = []
       per_submodule_vector_field_snapshots_disentangler = []
       per_submodule_vector_field_snapshots_decimator = []
+      all_non_final_latents = []
 
       # Unrolled Python Loop
       # JAX will trace this loop and compile it as a straight-line sequence of calls
@@ -993,6 +997,8 @@ class NNRG(eqx.Module):
           current_x = jnp.reshape(current_x, (-1, 2))
           layer_result = layer.inference_with_vector_field_snapshots(current_x, num_time_samples, key_sub_module)
           current_x = layer_result[LATENT_VAR_NAME]
+          all_non_final_latents.append(layer_result[DISENTANGLER_INPUT_NAME])
+          all_non_final_latents.append(layer_result[DECIMATOR_INPUT_NAME])
 
           total_delta_log_likelihood += layer_result[LOGP_NAME]
           latents_list.append(layer_result[COARSE_VAR_NAME])
@@ -1002,10 +1008,11 @@ class NNRG(eqx.Module):
               latents_list.append(layer_result[LATENT_VAR_NAME])
 
       all_coarse_variables = jnp.concatenate(latents_list)
+      all_non_final_latents = jnp.concatenate(all_non_final_latents[1:])
       all_vector_field_snapshots_disentangler = jnp.stack(per_submodule_vector_field_snapshots_disentangler)
       all_vector_field_snapshots_decimator = jnp.stack(per_submodule_vector_field_snapshots_decimator)
 
-      return {COARSE_VAR_NAME: all_coarse_variables, LOGP_NAME: total_delta_log_likelihood, VECTOR_FIELD_SNAPSHOT_NAME: {DECIMATOR_CNF_NAME: all_vector_field_snapshots_decimator, DISENTANGLER_CNF_NAME: all_vector_field_snapshots_disentangler}}
+      return {COARSE_VAR_NAME: all_coarse_variables, LOGP_NAME: total_delta_log_likelihood, VECTOR_FIELD_SNAPSHOT_NAME: {DECIMATOR_CNF_NAME: all_vector_field_snapshots_decimator, DISENTANGLER_CNF_NAME: all_vector_field_snapshots_disentangler}, NON_FINAL_LATENTS_NAME: all_non_final_latents}
 
 
 

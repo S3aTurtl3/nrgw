@@ -15,6 +15,7 @@ from ax.api.client import Client
 from ax.api.configs import ChoiceParameterConfig, RangeParameterConfig
 
 from losses import just_nll
+from utils import get_unique_identifier
 from scriptt import (load_model,
     WrapperForNNRG,
     COARSE_VAR_NAME,
@@ -118,7 +119,8 @@ def main():
 
     OUTPUT_DIR = args.out
     TEMP_DIR = args.dir_model_weights
-    OUTPUT_FILE_NAME = hashlib.md5(f"tuning{vars(args)}".encode('utf-8')).hexdigest() + ".json"
+    run_name = get_unique_identifier(vars(args))
+    OUTPUT_FILE_NAME = "tuning" + run_name + ".json"
     temp_tag = f"{args.lattice_size}T{args.temp:g}".replace(".", "p")
     model_saving_dir = os.path.join(TEMP_DIR, "models", temp_tag)
     os.makedirs(model_saving_dir, exist_ok=True)
@@ -194,7 +196,7 @@ def main():
     MMD_METRIC_NAME = "MMD"
 
     def get_description_of_job():
-        return str(args) + f"lsize{LATTICE_SIZE_ISING}"
+        return get_unique_identifier(vars(args)) + f"lsize{LATTICE_SIZE_ISING}"
 
     def make_and_save_visualizations_of_best_models(frontier, key_frontier, test_dataset):
         

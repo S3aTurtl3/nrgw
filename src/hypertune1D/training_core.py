@@ -8,6 +8,8 @@ import equinox as eqx
 import optax
 import wandb
 
+import hashlib
+
 from scriptt import OverfitTracker, PATIENCE_NUM_EPOCHS, nrg_wrapper_saver, WrapperForNNRG
 
 

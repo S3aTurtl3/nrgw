@@ -7,8 +7,8 @@
 #SBATCH --gpus=1
 #SBATCH -t 0-03:00:00 # Time (D-HH:MM:SS)
 #SBATCH --mem=60G # Memory
-#SBATCH -o icepy_%j.o # Name of standard output file
-#SBATCH -e icepy_%j.e # Name of standard error file
+#SBATCH -o vpy_%j.o # Name of standard output file
+#SBATCH -e vpy_%j.e # Name of standard error file
 #SBATCH --signal=USR1@4
 #SBATCH --signal=USR1@2
 #SBATCH --mail-user=orealao@mit.edu

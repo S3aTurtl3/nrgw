@@ -4,6 +4,7 @@ import os
 import time
 from dataclasses import dataclass, field
 import jax.random as jr
+import jax.numpy as jnp
 import equinox as eqx
 import optax
 import wandb
@@ -21,7 +22,7 @@ class LossSpec: # SOURCE: Claude
     """"full" or "plain" -- used to build the wandb project name."""
 
     compute_loss: Callable
-    """(model, data, loss_key, step) -> (total_loss, aux_dict). aux_dict may be empty."""
+    """(model, data, loss_key, step) -> (total_loss, aux_dict). aux_dict may be empty. Also, step will be passed in as a jnp.Array scalar"""
 
     compute_val_loss: Callable
     """(model, loss_key) -> val_loss (scalar)."""
@@ -83,7 +84,7 @@ def run_training_loop(
 
     @eqx.filter_jit
     def make_step(model, opt_state, data, loss_key, step):
-        (value, aux), grads = loss_and_grad(model, data, loss_key, step)
+        (value, aux), grads = loss_and_grad(model, data, loss_key, jnp.array(step, dtype=jnp.int32) )
         loss_key = jr.split(loss_key, 1)[0]
         updates, opt_state = optim.update(grads, opt_state, eqx.filter(model, eqx.is_inexact_array))
         model = eqx.apply_updates(model, updates)

@@ -74,8 +74,8 @@ def train_baseline_nnrg(model: WrapperForNNRG,
                desc="",
                 save_every=1500):
     
-    def compute_loss(model, data, loss_key, step):
-        return just_nll(model, data), None
+    def compute_loss(model, data, loss_key, step: jax.Array):
+        return just_nll(model, data), dict() # no auxillary information so dict() is used as a placeholder
     
     def compute_val_loss(model, loss_key):
         return just_nll(model, dataset_test)

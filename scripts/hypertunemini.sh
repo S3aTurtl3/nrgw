@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --account=iaifi_lab
-#SBATCH -J ice # Job name
+#SBATCH -J icemini # Job name
 #SBATCH -p iaifi_gpu # Partition(s) (separate with
 # commas if using multiple)
 #SBATCH --ntasks=1 # Number of cores
 #SBATCH --gpus=1
 #SBATCH -t 0-00:40:00 # Time (D-HH:MM:SS)
-#SBATCH --mem=15G # Memory
-#SBATCH -o icepy_%j.o # Name of standard output file
-#SBATCH -e icepy_%j.e # Name of standard error file
+#SBATCH --mem=25G # Memory
+#SBATCH -o icemipy_%j.o # Name of standard output file
+#SBATCH -e icemipy_%j.e # Name of standard error file
 #SBATCH --signal=USR1@4
 #SBATCH --signal=USR1@2
 #SBATCH --mail-user=orealao@mit.edu
@@ -25,4 +25,4 @@ cd  /n/holystore01/LABS/iaifi_lab/Users/oalao/nrgw
 # Force offline mode for W&B
 export WANDB_MODE=offline
 
-pixi run -e gpu python src/hypertune1D/train_full.py --batch_size=50 --steps=100 --temp=0 --num_trials=5 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=32 --out="/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff" --dir_model_weights="/scratch"
+pixi run -e gpu python src/hypertune1D/train_full.py --batch_size=50 --steps=200 --temp=10 --num_trials=3 --num_train_samples=100 --num_test_samples=100 --num_val_samples=100 --lattice_size=64 --out="/n/holystore01/LABS/iaifi_lab/Users/oalao/runstuff" --dir_model_weights="/scratch"

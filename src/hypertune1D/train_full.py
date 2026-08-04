@@ -94,7 +94,7 @@ def train_nnrg(model: WrapperForNNRG,
         key_reg, key_ke, key_shots = jr.split(loss_key, 3)
         key_shots = jr.split(key_shots, data.shape[0])
 
-        all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, thing = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, data, key_shots)
+        all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, thing = jax.vmap(lambda m, example, key: jax.checkpoint(llambda)(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, data, key_shots)
 
         keys_ke = jr.split(key_ke, all_coarse.shape[0])
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=iaifi_lab
-#SBATCH -J ice # Job name
+#SBATCH -J miniice # Job name
 #SBATCH -p iaifi_gpu # Partition(s) (separate with
 # commas if using multiple)
 #SBATCH --ntasks=1 # Number of cores

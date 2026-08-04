@@ -1808,6 +1808,7 @@ NLL_COEFF = 1
 
 MARGINAL_REGULARIZATION_COEFF = 6
 
+
 def llambda(model, data, num_time_samples, key):
   module_output = model.inference(data, num_time_samples, key)
   return module_output[COARSE_VAR_NAME], module_output[LOGP_NAME], module_output[VECTOR_FIELD_SNAPSHOT_NAME][DECIMATOR_CNF_NAME], module_output[VECTOR_FIELD_SNAPSHOT_NAME][DISENTANGLER_CNF_NAME], module_output[NON_FINAL_LATENTS_NAME]

@@ -1132,13 +1132,12 @@ class WrapperForNNRG(eqx.Module):
 
     def inference(self, x:jax.Array, num_time_samples, key):
         """
-        Returns a tuple containing:
-        - the latent variables `z` (1D array) resulting from evolving the latent variable `x` in the backwards-in-time direction
-        - the change in log-likelihood (what you add to the log probability density of `z` to get the log probability density of `x`)
-        x:
-            a 1D array"""
+        Returns a dictonary containing:
+        
+            At key NON_FINAL_LATENTS_NAME: a vector. in our proposed NeuralRG-inspired framework the marginal distribution of each component in this vector is encouraged to be standard gaussian  """
         nnrg_output = self.nnrg.inference_with_vector_field_snapshots(jnp.reshape(x, (-1, 2)), num_time_samples, key)
-        return {COARSE_VAR_NAME: nnrg_output[COARSE_VAR_NAME].flatten(), LOGP_NAME: nnrg_output[LOGP_NAME], VECTOR_FIELD_SNAPSHOT_NAME: {DISENTANGLER_CNF_NAME: nnrg_output[VECTOR_FIELD_SNAPSHOT_NAME][DISENTANGLER_CNF_NAME], DECIMATOR_CNF_NAME: nnrg_output[VECTOR_FIELD_SNAPSHOT_NAME][DECIMATOR_CNF_NAME]}}
+        non_final_latents = nnrg_output[NON_FINAL_LATENTS_NAME].flatten()
+        return {COARSE_VAR_NAME: nnrg_output[COARSE_VAR_NAME].flatten(), LOGP_NAME: nnrg_output[LOGP_NAME], NON_FINAL_LATENTS_NAME: non_final_latents, VECTOR_FIELD_SNAPSHOT_NAME: {DISENTANGLER_CNF_NAME: nnrg_output[VECTOR_FIELD_SNAPSHOT_NAME][DISENTANGLER_CNF_NAME], DECIMATOR_CNF_NAME: nnrg_output[VECTOR_FIELD_SNAPSHOT_NAME][DECIMATOR_CNF_NAME]}}
 
     def inference_without_vector_field_snapshots(self, x):
         nnrg_output = self.nnrg.inference(x)
@@ -1662,7 +1661,7 @@ def penalties_on_test_data(model, test_data, loss_key, num_time_samples):
   loss_key, key_ke, key_shots = jr.split(loss_key, 3)
   key_shots = jr.split(key_shots, test_data.shape[0])
 
-  all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, test_data, key_shots)
+  all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, intra_latents = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, test_data, key_shots)
 
   keys_ke = jr.split(key_ke, all_coarse.shape[0])
 
@@ -1751,24 +1750,26 @@ def get_intra_latents(model: WrapperForNNRG, lattice_size, batch_size, key):
 
 # %%
 REGULARIZATION_BANDWITH = 0.6
-def regularization_on_marginals(model: WrapperForNNRG, data: jax.Array, regularization_key: jr.PRNGKey):
-    """Returns the penalty to be added to the loss function such that the marginal distribution of each
-    latent variable is gaussia
 
-    data:
-        shape is (batch_size, lattice_size) where `lattice_size` is the size of the input"""
-    intra_latents = get_intra_latents(model, data.shape[1], data.shape[0], regularization_key)
-    penalty = jax.vmap(lambda column: analytical_mmd(column, REGULARIZATION_BANDWITH), in_axes=1)(intra_latents[:, :, None])
+def _regularization_on_marginals(batch: jax.Array):
+    """
+    A loss function penalizing the deviation of some random vector's distribution (`batch` is an array containing samples from that distribution, one sample per row) from a distribution
+    about which it is true that the marginal distribution of each component is standard gaussian
+    Parameters
+    ----------
+    batch: jax.Array
+        a 2D array consisting of a batch of samples from the distribution of some random vector """
+    penalty = jax.vmap(lambda column: analytical_mmd(column, REGULARIZATION_BANDWITH), in_axes=1)(batch[:, :, None])
     penalty = jnp.where(penalty < 0, 0, penalty)
     penalty = penalty.sum()
     return penalty
 
-# %%
-def _regularization_helper_function(intra_latents):
-  penalty = jax.vmap(lambda column: analytical_mmd(column, REGULARIZATION_BANDWITH), in_axes=1)(intra_latents[:, :, None])
-  penalty = jnp.where(penalty < 0, 0, penalty)
-  penalty = penalty.sum()
-  return penalty
+def regularization_on_marginals(model: WrapperForNNRG, data: jax.Array, regularization_key: jr.PRNGKey):
+    intra_latents = get_intra_latents(model, data.shape[1], data.shape[0], regularization_key)
+    penalty = _regularization_on_marginals(intra_latents)
+    return penalty
+
+
 
 # %%
 def generate_potential_fn(K, alpha, N):
@@ -1809,37 +1810,13 @@ MARGINAL_REGULARIZATION_COEFF = 6
 
 def llambda(model, data, num_time_samples, key):
   module_output = model.inference(data, num_time_samples, key)
-  return module_output[COARSE_VAR_NAME], module_output[LOGP_NAME], module_output[VECTOR_FIELD_SNAPSHOT_NAME][DECIMATOR_CNF_NAME], module_output[VECTOR_FIELD_SNAPSHOT_NAME][DISENTANGLER_CNF_NAME]
+  return module_output[COARSE_VAR_NAME], module_output[LOGP_NAME], module_output[VECTOR_FIELD_SNAPSHOT_NAME][DECIMATOR_CNF_NAME], module_output[VECTOR_FIELD_SNAPSHOT_NAME][DISENTANGLER_CNF_NAME], module_output[NON_FINAL_LATENTS_NAME]
 
 def NLLLoss_2(latent_variables, log_likelihood):
-  print(latent_variables.shape)
   log_likelihood += jax.vmap(normal_log_likelihood)(latent_variables)
   return -jnp.mean(log_likelihood)
 
-def NLLLoss(model, data):
-    """
-    data:
-        shape (batch_size, lattice size)
-    """
 
-    latent_variables, log_likelihood = jax.vmap(llambda)(data)
-    log_likelihood += jax.vmap(normal_log_likelihood)(latent_variables)
-    return -jnp.mean(log_likelihood)
-
-
-
-# %%
-def nll_nnrg(model: WrapperForNNRGSubModule, inference_info: InferenceInfo, data: jax.Array, loss_key: jr.PRNGKey):
-    """Computes the mean NLL of that `model` achieves on the dataset `data`
-
-    `data`:
-        shape (batch_size x lattice_size) where `lattice_size` is the size of vector that `model` expects as input
-    inference_info:
-        specifies the mean and std that should be used to transform `data` before providing it as input to `model` (transformed data = (data- mean)/std)
-        (for use if the data from the target distribution was standardized before being provided to the model during training)
-    """
-    data = (data-inference_info.mean)/inference_info.std
-    return NLLLoss(model, data)
 
 # %%
 def sample_from_nnrg(model: WrapperForNNRGSubModule, key: jr.PRNGKey, lattice_size:int) -> jax.Array:
@@ -2181,147 +2158,6 @@ def get_model_file_name(
                check_for_overfit_every=100,
                desc=""):
     return get_model_file_identifier(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc) + ".eqx"
-
-
-
-def train_nnrg(model: WrapperForNNRGSubModule,
-               dataloader: StreamingDataLoader,
-               loss_key,
-               lr: float,
-               ke_penalty_coeff: float,
-               coeff_marginal_regularization: float,
-               coeff_main_loss_term: float,
-               num_time_samples,
-               dataset_test,
-               num_time_samples_test,
-               ke_schedule: KESchedule,
-               directory_model_saving,
-               steps=10000,
-               exact_logp=True,
-               weight_decay=1e-5,
-               print_every=100,
-               check_for_overfit_every=100,
-               desc="",
-                save_every=1500):
-  optim = optax.adamw(lr, weight_decay=weight_decay)
-  opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
-  wandb.init(
-      project="neural-renormalization-group", # You can change your project name
-      config={
-          "learning_rate": lr,
-          "ke_penalty_coeff_initial": ke_schedule.coeff, # Initial KE coeff
-          "ke_penalty_num_steps_till_0": ke_schedule.num_steps_till_0,
-          "coeff_marginal_regularization": coeff_marginal_regularization,
-          "coeff_main_loss_term": coeff_main_loss_term,
-          "num_time_samples": num_time_samples,
-          "num_time_samples_test": num_time_samples_test,
-          "steps": steps,
-          "weight_decay": weight_decay,
-          "check_for_overfit_every": check_for_overfit_every,
-          "description": desc,
-          "lattice_size": dataloader.array.shape[1] if hasattr(dataloader, 'array') else 'N/A'
-      }
-  )
-
-  tracker = OverfitTracker(patience=PATIENCE_NUM_EPOCHS*dataloader.array.shape[0]/dataloader.batch_size/check_for_overfit_every, min_delta=0.01)
-
-  fname = get_model_file_name(lr, ke_schedule, coeff_marginal_regularization, coeff_main_loss_term, num_time_samples, num_time_samples_test, steps, check_for_overfit_every, desc)
-  opt_state_fname = f"m{lr}{steps}_test.eqx"
-  pth = os.path.join(directory_model_saving,fname)
-  pth_opt_state = os.path.join(directory_model_saving,opt_state_fname)
-
-
-  NUM_TIME_SAMPLES = 40
-
-  @eqx.filter_value_and_grad(has_aux=True)
-  def loss(model, data, loss_key):
-    loss_key, key_ke, key_shots = jr.split(loss_key, 3)
-    key_shots = jr.split(key_shots, data.shape[0])
-
-    all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, data, key_shots)
-
-    keys_ke = jr.split(key_ke, all_coarse.shape[0])
-
-    penalty = jax.vmap(lambda deci_shots, disen_shots, key: jax.checkpoint(kinetic_energy_penalty)(model, deci_shots, disen_shots, key))(per_submodule_decimator_vector_field_snapshots,
-                                                                                                                                                              per_submodule_disentangler_vf_snapshots, keys_ke)
-    penalty = jnp.mean(penalty)
-
-    marginal_regularization_penalty = regularization_on_marginals(model, data, loss_key)
-    main_loss = NLLLoss_2(all_coarse, logpp)
-    total_loss = coeff_main_loss_term*main_loss + coeff_marginal_regularization*marginal_regularization_penalty + ke_schedule.get_next(step)*penalty # optimization improvement: lamdba within jit
-    return total_loss, (penalty, marginal_regularization_penalty, main_loss)
-
-  @eqx.filter_jit
-  def validation_loss(model, loss_key):
-    key_shots_val, key_val = jr.split(loss_key, 2)
-    key_shots_val = jr.split(key_shots_val, dataset_test.shape[0])
-    all_coarse_val, logpp_val = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples_test, key), in_axes=(None, 0, 0))(model, dataset_test, key_shots_val)[:2]
-    val_loss = NLLLoss_2(all_coarse_val, logpp_val)
-    return val_loss
-
-
-  @eqx.filter_jit
-  def make_step(model: WrapperForNNRGSubModule, opt_state, data, loss_key):
-
-      (value, penalties), grads = loss(model, data, loss_key)
-      loss_key = jr.split(loss_key, 1)[0]
-      updates, opt_state = optim.update(
-          grads, opt_state, eqx.filter(model, eqx.is_inexact_array)
-      )
-      model = eqx.apply_updates(model, updates)
-      return value, penalties, model, opt_state, loss_key
-
-  step = 0
-  best_model = None
-  best_loss = float('inf')
-  loss_msgs = []
-  loss_key, key_val = jr.split(loss_key, 2)
-  overfitting = False
-  while step < steps:
-      val_loss = None
-      start = time.time()
-
-      data = dataloader(step)
-      step = step + 1
-      value, (ke_penalty, penalty_marginal_distribution, main_loss), model, opt_state, loss_key = make_step(
-          model, opt_state, data, loss_key
-      )
-
-      end = time.time()
-      if (step % check_for_overfit_every == 0) or step == steps-1:
-        val_loss = validation_loss(model, key_val)
-        key_val = jr.fold_in(key_val, step)
-        tracker_verdict = tracker.update(val_loss)
-        if tracker_verdict == "stop":
-          overfitting = True
-          print(f"Overfitting! val loss: {val_loss}")
-        if val_loss < best_loss:
-            best_loss = val_loss
-            best_model = model
-      if (step % print_every) == 0 or step == steps - 1:
-          loss_msg = f"Step: {step}, Loss: {value}, KE Penalty: {ke_penalty}, Marg Penalty: {penalty_marginal_distribution}, just NLL: {main_loss}, Val loss: {val_loss}, Computation time: {end - start}"
-          print(loss_msg)
-          loss_msgs.append(loss_msg)
-          computation_time = end-start
-          wandb.log({
-              "total_loss": float(value),
-              "ke_penalty": float(ke_penalty),
-              "marginal_regularization_penalty": float(penalty_marginal_distribution),
-              "nll_main_loss": float(main_loss),
-              "val_loss": float(val_loss) if val_loss is not None else None,
-              "computation_time_per_step": computation_time
-          }, step=step)
-      if overfitting or ((step % save_every) == 0 or step == steps - 1 or step == 1):
-        if best_model is not None:
-            nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
-        if overfitting and ke_schedule.get_next(step) == 0:
-            break
-
-  wandb.finish()
-  if best_model is None:
-      print("Best_model was None")
-      best_model = model
-  return best_model, (opt_state, loss_msgs)
 
 
 # %%

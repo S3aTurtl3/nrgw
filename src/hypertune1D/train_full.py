@@ -50,7 +50,7 @@ from scriptt import (load_model,
      NLLLoss_2,
     llambda,
     kinetic_energy_penalty,
-    regularization_on_marginals,
+    _regularization_on_marginals,
     make_json_serializable,
     penalties_on_test_data,
     ModelInferenceInfo,
@@ -94,7 +94,7 @@ def train_nnrg(model: WrapperForNNRG,
         key_reg, key_ke, key_shots = jr.split(loss_key, 3)
         key_shots = jr.split(key_shots, data.shape[0])
 
-        all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, data, key_shots)
+        all_coarse, logpp, per_submodule_decimator_vector_field_snapshots, per_submodule_disentangler_vf_snapshots, thing = jax.vmap(lambda m, example, key: llambda(m, example, num_time_samples, key), in_axes=(None, 0, 0))(model, data, key_shots)
 
         keys_ke = jr.split(key_ke, all_coarse.shape[0])
 
@@ -102,7 +102,7 @@ def train_nnrg(model: WrapperForNNRG,
                                                                                                                                                                 per_submodule_disentangler_vf_snapshots, keys_ke)
         penalty = jnp.mean(penalty)
 
-        marginal_regularization_penalty = regularization_on_marginals(model, data, key_reg)
+        marginal_regularization_penalty = _regularization_on_marginals(thing)
         main_loss = NLLLoss_2(all_coarse, logpp)
         total_loss = coeff_main_loss_term*main_loss + coeff_marginal_regularization*marginal_regularization_penalty + ke_schedule.get_next(step)*penalty # optimization improvement: lamdba within jit
         return total_loss, (penalty, marginal_regularization_penalty, main_loss)
@@ -362,7 +362,6 @@ def main():
                 dataloader,
                 loss_key,
                 lr=parameters[LR_PARAM_NAME],
-                ke_penalty_coeff=parameters[PENALTY_COEFF_NAME],
                 coeff_marginal_regularization=parameters[PARAM_NAME_MARGINAL_REGULARIZATION],
                 coeff_main_loss_term=parameters[PARAM_NAME_MAIN_TERM],
                 num_time_samples=args.num_time_samples,

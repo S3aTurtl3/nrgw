@@ -83,7 +83,7 @@ def run_training_loop(
     validation_loss = eqx.filter_jit(loss_spec.compute_val_loss)
 
     @eqx.filter_jit
-    def make_step(model, opt_state, data, loss_key, step: jnp.Array):
+    def make_step(model, opt_state, data, loss_key, step: jax.Array):
         (value, aux), grads = loss_and_grad(model, data, loss_key, step)
         loss_key = jr.split(loss_key, 1)[0]
         updates, opt_state = optim.update(grads, opt_state, eqx.filter(model, eqx.is_inexact_array))

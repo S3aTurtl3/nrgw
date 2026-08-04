@@ -83,14 +83,14 @@ def run_training_loop(
     validation_loss = eqx.filter_jit(loss_spec.compute_val_loss)
 
     @eqx.filter_jit
-    def make_step(model, opt_state, data, loss_key, step):
-        (value, aux), grads = loss_and_grad(model, data, loss_key, jnp.array(step, dtype=jnp.int32) )
+    def make_step(model, opt_state, data, loss_key, step: jnp.Array):
+        (value, aux), grads = loss_and_grad(model, data, loss_key, step)
         loss_key = jr.split(loss_key, 1)[0]
         updates, opt_state = optim.update(grads, opt_state, eqx.filter(model, eqx.is_inexact_array))
         model = eqx.apply_updates(model, updates)
         return value, aux, model, opt_state,loss_key
     
-    step = 0
+    step = jnp.array(0, dtype=jnp.int32) 
     best_model = None
     best_validation_loss = float('inf')
     loss_messages = []

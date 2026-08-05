@@ -105,7 +105,7 @@ def train_nnrg(model: WrapperForNNRG,
         marginal_regularization_penalty = _regularization_on_marginals(thing)
         main_loss = NLLLoss_2(all_coarse, logpp)
         total_loss = coeff_main_loss_term*main_loss + coeff_marginal_regularization*marginal_regularization_penalty + ke_schedule.get_next(step)*penalty # optimization improvement: lamdba within jit
-        return total_loss, (penalty, marginal_regularization_penalty, main_loss)
+        return total_loss, {"KE penalty":penalty, "Marg. Reg.": marginal_regularization_penalty, "Just Nll": main_loss}
     
     loss_spec = LossSpec(
         variant_name="full",

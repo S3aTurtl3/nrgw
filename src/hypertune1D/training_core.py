@@ -4,6 +4,7 @@ import os
 import time
 from dataclasses import dataclass, field
 import jax.random as jr
+import jax
 import jax.numpy as jnp
 import equinox as eqx
 import optax

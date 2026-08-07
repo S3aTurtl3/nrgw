@@ -2,10 +2,10 @@ import diffrax
 
 NUM_STEPS = 10
 def differential_equation_solve(terms, solver, t0, t1, dt0, y0, args):
-    return diffrax.diffeqsolve(NUM_STEPS, terms, solver, t0, t1, y0, args)
+    return diffrax.diffeqsolve(terms, solver, t0, t1, dt0, y0, args)
 
 def differential_equation_solve_with_saveat(terms, solver, t0, t1, dt0, y0, args, saveat):
-    return diffrax.diffeqsolve(NUM_STEPS, terms, solver, t0, t1, y0, args, saveat=saveat)
+    return diffrax.diffeqsolve(terms, solver, t0, t1, dt0, y0, args, saveat=saveat)
 
 
 

@@ -128,11 +128,11 @@ def run_training_loop(
                 },
                 step=step
             )
-        if overfitting or ((step % save_every) == 0 or step == steps - 1 or step == 1):
+        if (overfitting and loss_spec.should_break_on_overfit(step)) or ((step % save_every) == 0 or step == steps - 1 or step == 1):
             if best_model is not None:
                 nrg_wrapper_saver(pth, {"depth": len(model.nnrg.submodules)}, best_model)
-            if overfitting and loss_spec.should_break_on_overfit(step):
-                break
+        if overfitting and loss_spec.should_break_on_overfit(step):
+            break
     wandb.finish()
     if best_model is None:
         print("best model was None")

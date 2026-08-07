@@ -107,7 +107,7 @@ def main():
     parser.add_argument('--out', required=True,help='should be a directory with longterm storage (so not local scratch)')
     parser.add_argument('--dir_model_weights', required=True, help='e.g. local scratch if it is not important to retain model weights')
     parser.add_argument('--check_overfit_every', type=int, default=100)
-    parser.add_argument('--n', type=int, default=2000)
+    parser.add_argument('--n', type=int, default=13000)
 
     args = parser.parse_args()
 

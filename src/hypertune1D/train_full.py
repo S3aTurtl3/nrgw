@@ -156,7 +156,7 @@ def main():
     parser.add_argument('--main_coeff_max', type=float, default=2.0, help='Upper bound for main loss term coefficient search range')
     parser.add_argument('--steps_til_0_min', type=int, default=None, help='Lower bound (in steps) for KE-penalty decay schedule length; defaults to 3 epochs worth of steps if not provided')
     parser.add_argument('--steps_til_0_max', type=int, default=None, help='Upper bound (in steps) for KE-penalty decay schedule length; defaults to PATIENCE_NUM_EPOCHS/3 epochs worth of steps if not provided')
-    parser.add_argument('--n', type=int, default=2000)
+    parser.add_argument('--n', type=int, default=13000)
 
     args = parser.parse_args()
 

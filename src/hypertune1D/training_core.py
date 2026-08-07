@@ -104,7 +104,7 @@ def run_training_loop(
         step += 1
         value, aux, model, opt_state, loss_key = make_step(model, opt_state, data, loss_key, step)
         end = time.time()
-        if (step % check_for_overfit_every == 0 or step == steps-1):
+        if (step % check_for_overfit_every == 0 or step == steps-1 or step==1):
             val_loss = validation_loss(model, key_val)
             key_val = jr.fold_in(key_val, step)
             tracker_verdict = tracker.update(val_loss)
